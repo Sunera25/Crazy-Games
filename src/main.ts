@@ -4,6 +4,7 @@ import { dealFirstBatch, dealSecondBatch, type PartialDeal } from './game/deal.t
 import { chooseCard, chooseTrump } from './game/ai.ts'
 import { isLegalCard, scoreRound, trickWinner, type PlayedCard, type Team, teamForPlayer } from './game/rules.ts'
 import { gameplayStart, initializeCrazyGames, loadingStart, loadingStop } from './platform/crazygames.ts'
+import { soundManager } from './utils/sounds.ts'
 
 const suitSymbols: Record<Suit, string> = { clubs: '♣', diamonds: '♦', hearts: '♥', spades: '♠' }
 const suitNames: Record<Suit, string> = { clubs: 'Clubs', diamonds: 'Diamonds', hearts: 'Hearts', spades: 'Spades' }
@@ -90,10 +91,14 @@ function render(): void {
 function chooseHumanTrump(suit: Suit): void {
   if (trumpSuit || trumpCaller !== 0 || matchOver || roundFinished) return
   trumpSuit = suit
+  soundManager.play('click')
   if (partialDeal) hands = dealSecondBatch(partialDeal)
   message = 'Your turn to lead'
   currentPlayer = trumpCaller
   render()
+  setTimeout(() => {
+    soundManager.play('deal')
+  }, 100)
   if (currentPlayer !== 0) scheduleBot()
 }
 
@@ -107,6 +112,7 @@ function playHumanCard(index: number): void {
 function playCard(player: number, handIndex: number): void {
   const card = hands[player].splice(handIndex, 1)[0]
   trick.push({ player, card })
+  soundManager.play('play')
   leadSuit = trick[0].card.suit
   selectedCard = player === 0 ? card : selectedCard
   if (trick.length === 4) finishTrick()
@@ -128,6 +134,9 @@ function finishTrick(): void {
   tricksWon[teamForPlayer(winner.player)] += 1
   currentPlayer = winner.player
   message = `${playerName(winner.player)} won the trick`
+  const winnerTeam = teamForPlayer(winner.player)
+  const playerTeam = teamForPlayer(0)
+  soundManager.play(winnerTeam === playerTeam ? 'win' : 'lose')
   render()
   window.setTimeout(() => {
     if (hands[0].length === 0) {
@@ -149,14 +158,27 @@ function finishRound(): void {
   if (result.winner) tokens[result.winner] += result.tokens
   const winnerLabel = result.winner === 'northSouth' ? 'Your team' : 'The rival team'
   message = result.winner ? `${winnerLabel} won ${result.tokens} token${result.tokens === 1 ? '' : 's'}${result.isKapothi ? ' · Kapothi!' : ''}` : '4–4 tie · one token carries over'
+
+  if (result.winner === 'northSouth') {
+    soundManager.playSequence(['score', 'win'], 0.15)
+  } else if (result.winner === 'eastWest') {
+    soundManager.playSequence(['score', 'lose'], 0.15)
+  } else {
+    soundManager.play('score')
+  }
+
   matchOver = tokens.northSouth >= 10 || tokens.eastWest >= 10
   roundFinished = true
-  if (matchOver) message = tokens.northSouth >= 10 ? 'You won the match!' : 'The rivals won the match'
+  if (matchOver) {
+    message = tokens.northSouth >= 10 ? 'You won the match!' : 'The rivals won the match'
+    soundManager.playSequence(tokens.northSouth >= 10 ? ['win', 'win'] : ['lose', 'lose'], 0.2)
+  }
   render()
 }
 
 function startRound(): void {
   if (botTimer !== null) window.clearTimeout(botTimer)
+  soundManager.play('shuffle')
   const deck = shuffleDeck(createDeck())
   partialDeal = dealFirstBatch(deck)
   hands = partialDeal.hands

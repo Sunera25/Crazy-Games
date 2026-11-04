@@ -1,4 +1,89 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@500;600;700;800&display=swap');
+
+@keyframes dealCard {
+  from {
+    opacity: 0;
+    transform: translateY(-50px) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes playCard {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: translateY(-80px) scale(0.9);
+    opacity: 0;
+  }
+}
+
+@keyframes trickWin {
+  0% {
+    transform: scale(1) rotate(0deg);
+  }
+  50% {
+    transform: scale(1.1) rotate(5deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes scoreFlip {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes roundTransition {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(230, 180, 90, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(230, 180, 90, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(230, 180, 90, 0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
 :root { font-family: 'Manrope', sans-serif; color: #f6f1e8; background: #122f2e; font-synthesis: none; text-rendering: optimizeLegibility; }
 * { box-sizing: border-box; } body { margin: 0; min-width: 320px; min-height: 100vh; background: #122f2e; } button { font: inherit; }
 .game-shell { min-height: 100vh; padding: 28px clamp(18px, 4vw, 68px) 24px; background: radial-gradient(circle at 50% 45%, #1d5049 0, #153d3a 36%, #102d2d 100%); overflow: hidden; }
@@ -9,11 +94,11 @@
 .opponent { position: absolute; gap: 8px; color: #f6f1e8; font-size: 12px; } .opponent small, .player-name small { display: block; color: #a7c0b4; font: 9px 'DM Mono', monospace; letter-spacing: .08em; margin-top: 3px; } .opponent-top { top: 28px; left: 50%; transform: translateX(-50%); } .opponent-left { left: 24px; top: 42%; } .opponent-right { right: 24px; top: 42%; }
 .avatar { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; color: #173936; font: 700 12px 'DM Mono', monospace; } .avatar-saffron { background: #e6b55a; } .avatar-coral { background: #de806c; } .avatar-sky { background: #8cc6bd; } .avatar-ink { background: #eadbb7; width: 38px; height: 38px; } .card-back-stack { color: #d3a755; font-size: 29px; margin-left: 7px; transform: rotate(90deg); opacity: .85; }
 .trick-zone { position: absolute; top: 28%; left: 50%; transform: translateX(-50%); width: 210px; height: 150px; display: grid; place-items: center; } .trick-placeholder { display: grid; place-items: center; gap: 10px; border: 1px dashed #78a38b; border-radius: 7px; width: 128px; height: 96px; color: #b7d0bf; font: 10px 'DM Mono', monospace; text-align: center; } .trick-placeholder span { color: #e4ba63; font-size: 9px; }
-.played-card { display: grid; place-items: center; width: 58px; height: 82px; border: 1px solid #d9c9a6; border-radius: 5px; color: #263c38; background: #f5eddd; box-shadow: 0 8px 16px #071f1d55; font-size: 25px; } .played-card span { font: 700 13px 'DM Mono', monospace; margin-bottom: 2px; }
-.trick-score { position: absolute; left: 28px; bottom: 30px; display: flex; gap: 7px; } .trick-score span { display: grid; gap: 4px; min-width: 86px; padding: 8px 10px; border: 1px solid #3f7064; border-radius: 4px; background: #193f3caa; } .trick-score b { color: #9db9ac; font: 9px 'DM Mono', monospace; white-space: nowrap; } .trick-score strong { color: #efc16a; font: 700 18px 'DM Mono', monospace; }
+.played-card { display: grid; place-items: center; width: 58px; height: 82px; border: 1px solid #d9c9a6; border-radius: 5px; color: #263c38; background: #f5eddd; box-shadow: 0 8px 16px #071f1d55; font-size: 25px; animation: dealCard 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); } .played-card span { font: 700 13px 'DM Mono', monospace; margin-bottom: 2px; }
+.trick-score { position: absolute; left: 28px; bottom: 30px; display: flex; gap: 7px; } .trick-score span { display: grid; gap: 4px; min-width: 86px; padding: 8px 10px; border: 1px solid #3f7064; border-radius: 4px; background: #193f3caa; } .trick-score b { color: #9db9ac; font: 9px 'DM Mono', monospace; white-space: nowrap; } .trick-score strong { color: #efc16a; font: 700 18px 'DM Mono', monospace; transition: transform 0.3s ease-out, color 0.3s ease-out; } .trick-score strong.animate-score { animation: scoreFlip 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .trump-panel { position: absolute; top: 29px; right: 30px; display: flex; align-items: center; gap: 10px; padding: 10px 13px; border: 1px solid #407267; border-radius: 4px; background: #193f3caa; } .trump-panel strong { font-size: 12px; } .carry-dot { width: 8px; height: 8px; background: #e4b65b; border-radius: 50%; }
 .player-panel { position: absolute; bottom: 24px; left: 50%; width: min(760px, calc(100% - 40px)); transform: translateX(-50%); } .player-name { justify-content: center; margin-bottom: 15px; } .hand { display: flex; justify-content: center; min-height: 142px; padding: 0 8px; }
-.card { position: relative; width: 76px; height: 112px; margin-left: -10px; border: 1px solid #d9c9a6; border-radius: 6px; color: #263c38; background: #f5eddd; box-shadow: 0 8px 15px #0b272577; cursor: pointer; transition: transform .18s, margin .18s, box-shadow .18s; } .card:first-child { margin-left: 0; } .card.legal:hover, .card.selected { transform: translateY(-15px); box-shadow: 0 16px 24px #071f1d99; z-index: 2; } .card.muted { opacity: .48; cursor: not-allowed; } .card.red { color: #c65c52; } .card-rank { position: absolute; top: 9px; left: 10px; font: 700 17px 'DM Mono', monospace; } .card-suit { position: absolute; bottom: 10px; right: 10px; font-size: 24px; }
+.card { position: relative; width: 76px; height: 112px; margin-left: -10px; border: 1px solid #d9c9a6; border-radius: 6px; color: #263c38; background: #f5eddd; box-shadow: 0 8px 15px #0b272577; cursor: pointer; transition: transform .18s cubic-bezier(0.34, 1.56, 0.64, 1), margin .18s, box-shadow .18s; } .card:first-child { margin-left: 0; } .card.legal:hover, .card.selected { transform: translateY(-15px); box-shadow: 0 16px 24px #071f1d99; z-index: 2; filter: drop-shadow(0 12px 20px rgba(7, 31, 29, 0.6)); } .card.muted { opacity: .48; cursor: not-allowed; } .card.red { color: #c65c52; } .card-rank { position: absolute; top: 9px; left: 10px; font: 700 17px 'DM Mono', monospace; } .card-suit { position: absolute; bottom: 10px; right: 10px; font-size: 24px; } .animate-deal { animation: dealCard 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; } .animate-play { animation: playCard 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; } .animate-trick-win { animation: trickWin 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55); } .animate-score { animation: scoreFlip 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); } .animate-round-transition { animation: roundTransition 0.8s ease-in-out; } .pulse { animation: pulse 0.6s; } .shimmer { background: linear-gradient(to right, transparent 0%, rgba(255, 255, 255, 0.2) 50%, transparent 100%); background-size: 1000px 100%; animation: shimmer 1.2s; }
 .action-panel { display: flex; align-items: center; gap: 24px; max-width: 1380px; margin: 18px auto 0; padding: 16px 20px; border: 1px solid #345e56; border-radius: 6px; background: #193f3b; } .action-copy { flex: 1; } .action-copy strong, .action-copy span { display: block; } .action-copy strong { font-size: 13px; } .action-copy span:not(.status-dot) { color: #95b0a4; font-size: 11px; margin-top: 4px; } .status-dot { width: 8px; height: 8px; background: #e1af52; border-radius: 50%; box-shadow: 0 0 0 4px #e1af5222; }
 .suit-picker { display: flex; gap: 5px; } .suit-button { display: grid; place-items: center; gap: 3px; min-width: 70px; padding: 7px 8px; border: 1px solid #39665e; border-radius: 4px; color: #bad0c3; background: transparent; font-size: 10px; cursor: pointer; } .suit-button span { font-size: 18px; line-height: 1; } .suit-button.active, .suit-button:hover { color: #f0c46a; border-color: #dbad58; background: #d9a94c14; } .suit-button:nth-child(2), .suit-button:nth-child(3) { color: #e48a78; }
 .primary-button { padding: 12px 16px; border: 0; border-radius: 4px; color: #193c36; background: #e6b45a; font-weight: 800; font-size: 11px; cursor: pointer; white-space: nowrap; } .primary-button span { margin-left: 8px; font-size: 15px; } .primary-button:hover { background: #f1c76e; } .footer-note { max-width: 1380px; margin: 17px auto 0; text-align: center; } .footer-note span { color: #d6a74e; margin: 0 10px; }
