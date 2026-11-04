@@ -76,6 +76,7 @@ export function createPlayerAvatarSVG(initial: string, style: string = 'saffron'
           <stop offset="0%" style="stop-color:${avatarStyle.bgColor};stop-opacity:1" />
           <stop offset="100%" style="stop-color:${avatarStyle.accentColor};stop-opacity:1" />
         </radialGradient>
+        <clipPath id="avatar-${style}-clip"><circle cx="${s / 2}" cy="${s / 2}" r="${s / 2 - 1}"/></clipPath>
         <filter id="avatar-shadow">
           <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-opacity="0.25"/>
         </filter>
@@ -85,7 +86,7 @@ export function createPlayerAvatarSVG(initial: string, style: string = 'saffron'
       <circle cx="${s / 2}" cy="${s / 2}" r="${s / 2 - 1}" fill="url(#avatar-${style}-gradient)" filter="url(#avatar-shadow)"/>
 
       <!-- Pattern overlay -->
-      <g clip-path="circle(${s / 2 - 1}px at ${s / 2}px ${s / 2}px)">
+      <g clip-path="url(#avatar-${style}-clip)">
         ${pattern}
       </g>
 
