@@ -333,3 +333,11 @@ button:focus-visible { outline: 2px solid #f0c46a; outline-offset: 2px; }
 @media (max-width: 420px) {
   .table { min-height: 505px; }
 }
+
+/* ===== Header spacing + suit picker overflow fix ===== */
+.topbar { gap: 12px; }
+@media (max-width: 760px) {
+  .topbar { display: flex; justify-content: space-between; }
+  .suit-button { min-width: 0; padding-left: 4px; padding-right: 4px; }
+  .suit-picker { width: 100%; }
+}
