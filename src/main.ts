@@ -5,7 +5,7 @@ import { chooseCard, chooseTrump } from './game/ai.ts'
 import { isLegalCard, scoreRound, trickWinner, type PlayedCard, type Team, teamForPlayer } from './game/rules.ts'
 import { gameplayStart, initializeCrazyGames, loadingStart, loadingStop } from './platform/crazygames.ts'
 import { soundManager } from './utils/sounds.ts'
-import { createEnhancedCardSVG, createGradientCardBackSVG, createPlayerAvatarSVG, createTableBackgroundSVG, getAvatarColor } from './utils/index.ts'
+import { createEnhancedCardSVG, createGradientCardBackSVG, createParticleEffectSVG, createPlayerAvatarSVG, createSuitIconSVG, createTableBackgroundSVG, getAvatarColor } from './utils/index.ts'
 
 const suitSymbols: Record<Suit, string> = { clubs: '♣', diamonds: '♦', hearts: '♥', spades: '♠' }
 const suitNames: Record<Suit, string> = { clubs: 'Clubs', diamonds: 'Diamonds', hearts: 'Hearts', spades: 'Spades' }
@@ -32,6 +32,9 @@ let rulesOpen = false
 let renderedTrickCount = 0
 let dealPending = false
 let collectingTo: number | null = null
+let trickWinnerSeat: number | null = null
+let celebration: 'win' | 'kapothi' | 'match' | null = null
+let prevTricksWon: Record<Team, number> = { northSouth: 0, eastWest: 0 }
 const app = document.querySelector<HTMLDivElement>('#app')!
 
 const botNamePool = ['Nimal', 'Amaya', 'Kasun', 'Dilshan', 'Sahan', 'Tharushi', 'Isuru', 'Chathura']
@@ -49,8 +52,11 @@ function playerName(player: number): string {
   return playerNames[player]
 }
 
-function playerInitial(player: number): string {
-  return playerName(player).slice(0, 1).toUpperCase()
+function stackMarkup(player: number): string {
+  const count = hands[player]?.length ?? 0
+  const backs = Math.min(3, Math.max(1, count))
+  const fan = Array.from({ length: backs }, (_, i) => `<span class="stack-card stack-${i}">${createGradientCardBackSVG()}</span>`).join('')
+  return `<span class="card-back-stack">${fan}<em class="stack-count">${count}</em></span>`
 }
 
 function cardMarkup(card: Card, index: number, entering: boolean): string {
@@ -74,12 +80,15 @@ function render(): void {
   renderedTrickCount = trick.length
   const dealingHand = dealPending
   dealPending = false
-  const trickMarkup = trick.map((played, index) => `<div class="played-card${index >= newPlaysFrom ? ' is-new' : ''}${collectingTo === null ? '' : ` collect-${collectingTo}`}" aria-label="${playerName(played.player)} played ${played.card.rank} of ${suitNames[played.card.suit]}">${createEnhancedCardSVG(played.card)}</div>`).join('')
-  const trickScoreMarkup = `<div class="trick-score"><span><b>You + ${playerName(2)}</b><strong>${tricksWon.northSouth}</strong></span><span><b>${playerName(1)} + ${playerName(3)}</b><strong>${tricksWon.eastWest}</strong></span></div>`
+  const trickMarkup = trick.map((played, index) => `<div class="played-card${index >= newPlaysFrom ? ` is-new seat-${played.player}` : ''}${trickWinnerSeat === played.player && collectingTo === null ? ' is-winner' : ''}${collectingTo === null ? '' : ` collect-${collectingTo}`}" aria-label="${playerName(played.player)} played ${played.card.rank} of ${suitNames[played.card.suit]}">${createEnhancedCardSVG(played.card)}</div>`).join('')
+  const nsPop = tricksWon.northSouth !== prevTricksWon.northSouth ? ' class="animate-score"' : ''
+  const ewPop = tricksWon.eastWest !== prevTricksWon.eastWest ? ' class="animate-score"' : ''
+  prevTricksWon = { ...tricksWon }
+  const trickScoreMarkup = `<div class="trick-score"><span><b>You + ${playerName(2)}</b><strong${nsPop}>${tricksWon.northSouth}</strong></span><span><b>${playerName(1)} + ${playerName(3)}</b><strong${ewPop}>${tricksWon.eastWest}</strong></span></div>`
   app.innerHTML = `<main class="game-shell">
     <header class="topbar"><div class="brand-lockup"><span class="brand-mark">O</span><div><p class="eyebrow">TRICK-TAKER</p><h1>Omi</h1></div></div><div class="match-meta"><span class="round-label">ROUND ${String(roundNumber).padStart(2, '0')}</span><span class="match-score">You <strong>${tokens.northSouth}</strong> : <strong>${tokens.eastWest}</strong> Rivals</span></div><div class="topbar-actions"><div class="round-label">TRUMP CALLER · ${playerName(trumpCaller).toUpperCase()}</div><button class="rules-button" type="button" data-action="rules" aria-expanded="${rulesOpen}">Rules</button><button class="new-game-button" type="button" data-action="new-game">New game</button></div></header>
-    <section class="table" aria-label="Omi game table">${createTableBackgroundSVG()}<div class="table-glow"></div><div class="opponent opponent-top${currentPlayer === 2 ? ' is-turn' : ''}">${createPlayerAvatarSVG(playerInitial(2), getAvatarColor(playerName(2)), 32)}<div><strong>${playerName(2)}</strong></div><span class="card-back-stack">${createGradientCardBackSVG()}</span></div><div class="opponent opponent-left${currentPlayer === 3 ? ' is-turn' : ''}">${createPlayerAvatarSVG(playerInitial(3), getAvatarColor(playerName(3)), 32)}<div><strong>${playerName(3)}</strong></div><span class="card-back-stack">${createGradientCardBackSVG()}</span></div><div class="opponent opponent-right${currentPlayer === 1 ? ' is-turn' : ''}">${createPlayerAvatarSVG(playerInitial(1), getAvatarColor(playerName(1)), 32)}<div><strong>${playerName(1)}</strong></div><span class="card-back-stack">${createGradientCardBackSVG()}</span></div><div class="trick-zone">${trickMarkup || `<div class="trick-placeholder">${trumpSuit ? `TRUMP · ${trumpLabel}` : 'NEW HAND'}<span>${message}</span></div>`}</div>${trickScoreMarkup}<div class="trump-panel"><span class="panel-label">TRUMP</span><strong>${trumpLabel}</strong><span class="carry-dot"></span></div><div class="player-panel"><div class="hand">${sortedHand(hands[0] ?? []).map((card, index) => cardMarkup(card, index, dealingHand)).join('')}</div></div></section>
-    <section class="action-panel"><div class="action-copy"><span class="status-dot"></span><div><strong>${matchOver ? message : roundFinished ? message : trumpSuit ? (currentPlayer === 0 ? 'Your turn' : message) : `${playerName(trumpCaller)} chooses trump`}</strong><span>${matchOver ? 'Start a new match when you are ready.' : roundFinished ? 'The round is complete.' : trumpSuit ? `${trick.length}/4 cards in trick · ${legalHint}` : partialDeal ? 'Only the first four cards are dealt.' : 'Preparing the hand.'}</span></div></div><div class="suit-picker">${(['clubs', 'diamonds', 'hearts', 'spades'] as Suit[]).map((suit) => `<button class="suit-button ${trumpSuit === suit ? 'active' : ''}" data-suit="${suit}" type="button" ${trumpSuit || trumpCaller !== 0 || matchOver || roundFinished ? 'disabled' : ''}><span>${suitSymbols[suit]}</span>${suitNames[suit]}</button>`).join('')}</div>${roundFinished || matchOver ? '<button class="primary-button" type="button" data-action="continue">Continue <span>↗</span></button>' : ''}</section><p class="footer-note">FIRST TO 10 TOKENS WINS <span>•</span> KAPOTHI AWARDS 2</p>${rulesOpen ? `<div class="rules-backdrop" data-action="close-rules"><section class="rules-panel" role="dialog" aria-modal="true" aria-labelledby="rules-title" data-rules-panel><button class="rules-close" type="button" data-action="close-rules" aria-label="Close rules">×</button><p class="eyebrow">HOW TO PLAY</p><h2 id="rules-title">Omi rules</h2><div class="rules-grid"><div><h3>Deal and trump</h3><p>Four cards are dealt to each player first. The trump caller chooses a suit, then the remaining four cards are dealt.</p></div><div><h3>Play a trick</h3><p>Follow the led suit whenever possible. If you are void, play any card. The highest trump wins; otherwise, the highest card of the led suit wins.</p></div><div><h3>Ranks</h3><p>Ace is highest, followed by King, Queen, Jack, 10, 9, 8, and 7. Only these 32 cards are used.</p></div><div><h3>Scoring</h3><p>The caller's team earns 1 token for winning. The other team earns 2. A 4–4 tie carries 2 tokens to the next round.</p></div></div><p class="rules-goal">First team to reach 10 tokens wins. An 8-trick sweep is called Kapothi.</p></section></div>` : ''}</main>`
+    <section class="table" aria-label="Omi game table">${createTableBackgroundSVG()}<div class="table-glow"></div><div class="opponent opponent-top${currentPlayer === 2 ? ' is-turn' : ''}">${createPlayerAvatarSVG(playerName(2), getAvatarColor(playerName(2)), 32)}<div><strong>${playerName(2)}</strong></div>${stackMarkup(2)}</div><div class="opponent opponent-left${currentPlayer === 3 ? ' is-turn' : ''}">${createPlayerAvatarSVG(playerName(3), getAvatarColor(playerName(3)), 32)}<div><strong>${playerName(3)}</strong></div>${stackMarkup(3)}</div><div class="opponent opponent-right${currentPlayer === 1 ? ' is-turn' : ''}">${createPlayerAvatarSVG(playerName(1), getAvatarColor(playerName(1)), 32)}<div><strong>${playerName(1)}</strong></div>${stackMarkup(1)}</div><div class="trick-zone">${trickMarkup || `<div class="trick-placeholder">${trumpSuit ? `TRUMP · ${trumpLabel}` : 'NEW HAND'}<span>${message}</span></div>`}</div>${trickScoreMarkup}${celebration ? `<div class="fx-layer" aria-hidden="true">${createParticleEffectSVG(celebration === 'win' ? 'sparkle' : 'confetti')}</div>` : ''}<div class="trump-panel${trumpSuit ? ' is-set' : ''}"><span class="panel-label">TRUMP</span>${trumpSuit ? createSuitIconSVG(trumpSuit, 16) : ''}<strong>${trumpLabel}</strong><span class="carry-dot"></span></div><div class="player-panel"><div class="hand">${sortedHand(hands[0] ?? []).map((card, index) => cardMarkup(card, index, dealingHand)).join('')}</div></div></section>
+    <section class="action-panel"><div class="action-copy"><span class="status-dot"></span><div><strong>${matchOver ? message : roundFinished ? message : trumpSuit ? (currentPlayer === 0 ? 'Your turn' : message) : `${playerName(trumpCaller)} chooses trump`}</strong><span>${matchOver ? 'Start a new match when you are ready.' : roundFinished ? 'The round is complete.' : trumpSuit ? `${trick.length}/4 cards in trick · ${legalHint}` : partialDeal ? 'Only the first four cards are dealt.' : 'Preparing the hand.'}</span></div></div><div class="suit-picker">${(['clubs', 'diamonds', 'hearts', 'spades'] as Suit[]).map((suit) => `<button class="suit-button ${trumpSuit === suit ? 'active' : ''}" data-suit="${suit}" type="button" ${trumpSuit || trumpCaller !== 0 || matchOver || roundFinished ? 'disabled' : ''}>${createSuitIconSVG(suit, 20)}${suitNames[suit]}</button>`).join('')}</div>${roundFinished || matchOver ? '<button class="primary-button" type="button" data-action="continue">Continue <span>↗</span></button>' : ''}</section><p class="footer-note">FIRST TO 10 TOKENS WINS <span>•</span> KAPOTHI AWARDS 2</p>${rulesOpen ? `<div class="rules-backdrop" data-action="close-rules"><section class="rules-panel" role="dialog" aria-modal="true" aria-labelledby="rules-title" data-rules-panel><button class="rules-close" type="button" data-action="close-rules" aria-label="Close rules">×</button><p class="eyebrow">HOW TO PLAY</p><h2 id="rules-title">Omi rules</h2><div class="rules-grid"><div><h3>Deal and trump</h3><p>Four cards are dealt to each player first. The trump caller chooses a suit, then the remaining four cards are dealt.</p></div><div><h3>Play a trick</h3><p>Follow the led suit whenever possible. If you are void, play any card. The highest trump wins; otherwise, the highest card of the led suit wins.</p></div><div><h3>Ranks</h3><p>Ace is highest, followed by King, Queen, Jack, 10, 9, 8, and 7. Only these 32 cards are used.</p></div><div><h3>Scoring</h3><p>The caller's team earns 1 token for winning. The other team earns 2. A 4–4 tie carries 2 tokens to the next round.</p></div></div><p class="rules-goal">First team to reach 10 tokens wins. An 8-trick sweep is called Kapothi.</p></section></div>` : ''}</main>`
 
   app.querySelectorAll<HTMLButtonElement>('[data-suit]').forEach((button) => button.addEventListener('click', () => chooseHumanTrump(button.dataset.suit as Suit)))
   app.querySelectorAll<HTMLButtonElement>('[data-card-index]').forEach((button) => button.addEventListener('click', () => playHumanCard(Number(button.dataset.cardIndex))))
@@ -141,6 +150,7 @@ function finishTrick(): void {
   const winner = trickWinner(trick, trumpSuit!)
   tricksWon[teamForPlayer(winner.player)] += 1
   currentPlayer = winner.player
+  trickWinnerSeat = winner.player
   message = `${playerName(winner.player)} won the trick`
   const winnerTeam = teamForPlayer(winner.player)
   const playerTeam = teamForPlayer(0)
@@ -155,6 +165,7 @@ function finishTrick(): void {
     render()
     window.setTimeout(() => {
       collectingTo = null
+      trickWinnerSeat = null
       trick = []
       leadSuit = null
       selectedCard = null
@@ -182,6 +193,8 @@ function finishRound(): void {
 
   matchOver = tokens.northSouth >= 10 || tokens.eastWest >= 10
   roundFinished = true
+  if (result.winner === 'northSouth') celebration = result.isKapothi ? 'kapothi' : 'win'
+  if (matchOver && tokens.northSouth >= 10) celebration = 'match'
   if (matchOver) {
     message = tokens.northSouth >= 10 ? 'You won the match!' : 'The rivals won the match'
     soundManager.playSequence(tokens.northSouth >= 10 ? ['win', 'win'] : ['lose', 'lose'], 0.2)
@@ -198,7 +211,10 @@ function startRound(): void {
   dealPending = true
   trumpSuit = null; leadSuit = null; selectedCard = null; trick = []; currentPlayer = trumpCaller
   roundFinished = false
+  celebration = null
+  trickWinnerSeat = null
   tricksWon = { northSouth: 0, eastWest: 0 }
+  prevTricksWon = { northSouth: 0, eastWest: 0 }
   message = trumpCaller === 0 ? 'Choose your trump suit' : `${playerName(trumpCaller)} is choosing trump`
   roundNumber += 1
   render()
