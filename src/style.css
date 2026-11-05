@@ -341,3 +341,12 @@ button:focus-visible { outline: 2px solid #f0c46a; outline-offset: 2px; }
   .suit-button { min-width: 0; padding-left: 4px; padding-right: 4px; }
   .suit-picker { width: 100%; }
 }
+
+/* ===== Splash spacing + fill mobile viewport ===== */
+.splash-rules { margin-top: 10px; }
+@media (max-width: 760px) {
+  .game-shell { min-height: 100dvh; display: flex; flex-direction: column; }
+  .table { flex: 1 1 auto; margin-top: 0; margin-bottom: 0; }
+  .splash-inner { gap: 20px; }
+  .splash-logo { width: min(320px, 80vw); }
+}
