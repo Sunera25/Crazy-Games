@@ -346,6 +346,8 @@ button:focus-visible { outline: 2px solid #f0c46a; outline-offset: 2px; }
 .splash-rules { margin-top: 10px; }
 @media (max-width: 760px) {
   .game-shell { min-height: 100dvh; display: flex; flex-direction: column; }
+  .action-panel { width: 100%; margin-left: 0; margin-right: 0; }
+  .topbar { width: 100%; }
   .table { flex: 1 1 auto; width: 100%; margin-top: 0; margin-bottom: 0; }
   .splash-inner { gap: 20px; }
   .splash-logo { width: min(320px, 80vw); }
