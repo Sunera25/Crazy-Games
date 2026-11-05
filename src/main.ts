@@ -4,6 +4,7 @@ import { dealFirstBatch, dealSecondBatch, type PartialDeal } from './game/deal.t
 import { chooseCard, chooseTrump } from './game/ai.ts'
 import { isLegalCard, scoreRound, trickWinner, type PlayedCard, type Team, teamForPlayer } from './game/rules.ts'
 import { gameplayStart, gameplayStop, initializeCrazyGames, loadingStart, loadingStop } from './platform/crazygames.ts'
+import { gdAdBreak, initializeGameDistribution } from './platform/gamedistribution.ts'
 import { soundManager } from './utils/sounds.ts'
 import { createPlayerAvatarSVG, getAvatarColor } from './utils/index.ts'
 import { cardBackFanSVG, cardFaceSVG, suitIconSVG, tableSVG } from './utils/art.ts'
@@ -98,11 +99,14 @@ function render(): void {
   app.querySelectorAll<HTMLButtonElement>('[data-action="rules"]').forEach((button) => button.addEventListener('click', () => { rulesOpen = true; render() }))
   app.querySelectorAll<HTMLElement>('[data-action="close-rules"]').forEach((element) => element.addEventListener('click', (event) => { if (event.target === element || element.hasAttribute('data-rules-panel')) { rulesOpen = false; render() } }))
   app.querySelectorAll<HTMLButtonElement>('[data-action="continue"]').forEach((button) => button.addEventListener('click', () => {
-    if (matchOver) newMatch()
-    else {
-      trumpCaller = (trumpCaller + 1) % 4
-      startRound()
+    const proceed = () => {
+      if (matchOver) newMatch()
+      else {
+        trumpCaller = (trumpCaller + 1) % 4
+        startRound()
+      }
     }
+    void gdAdBreak('midroll').then(proceed)
   }))
 }
 
@@ -245,15 +249,21 @@ function scheduleBotTrump(): void {
 loadingStart()
 showSplash()
 loadingStop()
-void initializeCrazyGames()
+if (import.meta.env.MODE === 'gamedistribution') {
+  void initializeGameDistribution()
+} else {
+  void initializeCrazyGames()
+}
 
 function showSplash(showRules = false): void {
   const suits = (['spades', 'hearts', 'clubs', 'diamonds'] as Suit[]).map((suit, i) => `<span class="splash-suit s${i}">${suitIconSVG(suit, 40)}</span>`).join('')
   app.innerHTML = `<main class="splash">${suits}<button class="new-game-button splash-sound" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><div class="splash-inner"><img class="splash-logo" src="${logoUrl}" alt="Omi"><p class="splash-tag">The Sri Lankan trick-taking classic</p><button class="play-button" type="button" data-action="play">Play</button><button class="splash-rules" type="button" data-action="how">How to play</button><p class="splash-foot">4 players · 2 teams · First to 10 tokens</p></div>${showRules ? rulesMarkup() : ''}</main>`
   app.querySelector('[data-action="play"]')?.addEventListener('click', () => {
     soundManager.play('click')
-    app.querySelector('.splash')?.classList.add('leaving')
-    window.setTimeout(newMatch, 450)
+    void gdAdBreak('preroll').then(() => {
+      app.querySelector('.splash')?.classList.add('leaving')
+      window.setTimeout(newMatch, 450)
+    })
   })
   app.querySelector('[data-action="how"]')?.addEventListener('click', () => showSplash(true))
   app.querySelector('[data-action="sound"]')?.addEventListener('click', () => { soundManager.toggleMute(); showSplash(showRules) })
