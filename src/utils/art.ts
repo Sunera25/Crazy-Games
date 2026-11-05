@@ -113,18 +113,13 @@ export function tableSVG(): string {
         <stop offset="0" stop-color="#f3dc82"/><stop offset=".5" stop-color="#d4af37"/><stop offset="1" stop-color="#8c6c1d"/>
       </linearGradient>
       <radialGradient id="spot" cx="50%" cy="45%" r="45%"><stop offset="0" stop-color="#fff6d8" stop-opacity=".16"/><stop offset="1" stop-color="#fff6d8" stop-opacity="0"/></radialGradient>
-      <filter id="feltNoise"><feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="3" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .1 0"/><feComposite in2="SourceGraphic" operator="in"/></filter>
-      <filter id="woodGrain"><feTurbulence type="fractalNoise" baseFrequency=".004 .09" numOctaves="2"/><feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .18 0"/><feComposite in2="SourceGraphic" operator="in"/></filter>
-      <filter id="inset"><feGaussianBlur stdDeviation="10"/></filter>
     </defs>
     <rect width="1000" height="620" fill="#051a15"/>
     <rect x="10" y="10" width="980" height="600" rx="300" fill="url(#rail)"/>
-    <rect x="10" y="10" width="980" height="600" rx="300" fill="#000" filter="url(#woodGrain)"/>
     <rect x="12" y="12" width="976" height="596" rx="298" fill="none" stroke="#c48a52" stroke-opacity=".5" stroke-width="2"/>
     <rect x="34" y="34" width="932" height="552" rx="276" fill="none" stroke="url(#brass)" stroke-width="4"/>
     <rect x="40" y="40" width="920" height="540" rx="270" fill="url(#felt)"/>
-    <rect x="40" y="40" width="920" height="540" rx="270" fill="#000" filter="url(#feltNoise)"/>
-    <rect x="40" y="40" width="920" height="540" rx="270" fill="none" stroke="#000" stroke-opacity=".55" stroke-width="22" filter="url(#inset)"/>
+    <rect x="40" y="40" width="920" height="540" rx="270" fill="none" stroke="#000" stroke-opacity=".28" stroke-width="22"/>
     <rect x="40" y="40" width="920" height="540" fill="url(#spot)"/>
     <rect x="64" y="64" width="872" height="492" rx="246" fill="none" stroke="#d4af37" stroke-width="1.4" stroke-dasharray="1 8" stroke-linecap="round" opacity=".6"/>
     <ellipse cx="500" cy="300" rx="180" ry="116" fill="none" stroke="url(#brass)" stroke-width="1.5" opacity=".35"/>
