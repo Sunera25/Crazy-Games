@@ -365,3 +365,11 @@ button:focus-visible { outline: 2px solid #f0c46a; outline-offset: 2px; }
   .table { border-radius: 0; }
   .suit-picker { gap: 5px; }
 }
+
+/* ===== DIAMONDS label fit: smaller nowrap label, wider boxes ===== */
+@media (max-width: 760px) {
+  .action-panel { padding-left: 8px; padding-right: 8px; }
+  .suit-picker { gap: 4px; }
+  .suit-button { font-size: 9px; letter-spacing: 0; white-space: nowrap; }
+  .suit-button .suit-icon { width: 18px; height: 18px; }
+}
