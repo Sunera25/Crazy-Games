@@ -64,40 +64,92 @@ function createAvatarPattern(style: string, size: number): string {
   }
 }
 
-export function createPlayerAvatarSVG(initial: string, style: string = 'saffron', size: number = 40): string {
-  const s = size
+// --- Character face avatars -------------------------------------------------
+// Deterministic flat-style character faces generated from the player name, so
+// every seat (You + the bot pool) gets a stable, distinct character.
+
+const skinTones = ['#8d5524', '#a0662f', '#b07a45', '#c68863', '#96613a', '#7c4a21']
+const skinShadows = ['#74431b', '#875226', '#96653a', '#ac7452', '#7d4f2d', '#653b19']
+const hairColors = ['#1d1712', '#2b1c11', '#3d2a17', '#17141a', '#4a3220']
+const shirtColors = ['#b8542f', '#2f6db8', '#3d9970', '#7d5ba6', '#c94f7c', '#2a9d8f']
+
+type HairStyleName = 'short' | 'curly' | 'bun' | 'long' | 'cap' | 'fade'
+const hairByName: Record<string, HairStyleName> = { You: 'cap', Amaya: 'long', Tharushi: 'bun' }
+
+function hashName(name: string): number {
+  let hash = 0
+  for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) >>> 0
+  return hash
+}
+
+function hairMarkup(style: HairStyleName, hair: string, accent: string): string {
+  const topHalf = `<path d="M19.5 30 a12.5 12.5 0 0 1 25 0 Z" fill="${hair}"/>`
+  switch (style) {
+    case 'curly':
+      return `${topHalf}
+        <circle cx="22.5" cy="21.5" r="3.4" fill="${hair}"/><circle cx="27" cy="18.6" r="3.6" fill="${hair}"/>
+        <circle cx="32" cy="17.8" r="3.8" fill="${hair}"/><circle cx="37" cy="18.6" r="3.6" fill="${hair}"/>
+        <circle cx="41.5" cy="21.5" r="3.4" fill="${hair}"/>`
+    case 'bun':
+      return `${topHalf}<circle cx="32" cy="15" r="4.4" fill="${hair}"/>`
+    case 'long':
+      return `<rect x="17" y="21" width="5.5" height="21" rx="2.75" fill="${hair}"/>
+        <rect x="41.5" y="21" width="5.5" height="21" rx="2.75" fill="${hair}"/>${topHalf}`
+    case 'cap':
+      return `<path d="M19.5 29 a12.5 12.5 0 0 1 25 0 Z" fill="${accent}"/>
+        <rect x="17.5" y="28" width="29" height="3.2" rx="1.6" fill="${accent}"/>
+        <circle cx="32" cy="16.8" r="1.9" fill="${accent}"/>`
+    case 'fade':
+      return `<path d="M21.5 27.5 a10.5 10.5 0 0 1 21 0 Z" fill="${hair}"/>`
+    case 'short':
+    default:
+      return `${topHalf}<rect x="19.3" y="27" width="2.6" height="5.5" rx="1.3" fill="${hair}"/><rect x="42.1" y="27" width="2.6" height="5.5" rx="1.3" fill="${hair}"/>`
+  }
+}
+
+export function createPlayerAvatarSVG(name: string, style: string = 'saffron', size: number = 40): string {
   const avatarStyle = avatarStyles[style] || avatarStyles.saffron
-  const pattern = createAvatarPattern(style, s)
+  const hash = hashName(name || 'You')
+  const skin = skinTones[hash % skinTones.length]
+  const skinShadow = skinShadows[hash % skinShadows.length]
+  const hair = hairColors[Math.floor(hash / 7) % hairColors.length]
+  const shirt = name === 'You' ? '#d6aa58' : shirtColors[Math.floor(hash / 13) % shirtColors.length]
+  const hairStyle = hairByName[name] || (['short', 'curly', 'fade'] as HairStyleName[])[hash % 3]
+  const uid = `${style}-${hash % 997}`
 
   return `
-    <svg viewBox="0 0 ${s} ${s}" xmlns="http://www.w3.org/2000/svg" class="avatar-svg avatar-${style}">
+    <svg viewBox="0 0 64 64" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg" class="avatar-svg avatar-${style}" role="img" aria-label="${name}">
       <defs>
-        <radialGradient id="avatar-${style}-gradient" cx="40%" cy="40%" r="60%">
+        <radialGradient id="avbg-${uid}" cx="40%" cy="35%" r="70%">
           <stop offset="0%" style="stop-color:${avatarStyle.bgColor};stop-opacity:1" />
           <stop offset="100%" style="stop-color:${avatarStyle.accentColor};stop-opacity:1" />
         </radialGradient>
-        <clipPath id="avatar-${style}-clip"><circle cx="${s / 2}" cy="${s / 2}" r="${s / 2 - 1}"/></clipPath>
-        <filter id="avatar-shadow">
-          <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-opacity="0.25"/>
-        </filter>
+        <clipPath id="avclip-${uid}"><circle cx="32" cy="32" r="30"/></clipPath>
       </defs>
 
-      <!-- Background circle -->
-      <circle cx="${s / 2}" cy="${s / 2}" r="${s / 2 - 1}" fill="url(#avatar-${style}-gradient)" filter="url(#avatar-shadow)"/>
-
-      <!-- Pattern overlay -->
-      <g clip-path="url(#avatar-${style}-clip)">
-        ${pattern}
+      <circle cx="32" cy="32" r="30" fill="url(#avbg-${uid})"/>
+      <g clip-path="url(#avclip-${uid})">
+        ${createAvatarPattern(style, 64)}
+        <!-- Shoulders / shirt -->
+        <path d="M13 64 C13 50 23 45.5 32 45.5 C41 45.5 51 50 51 64 Z" fill="${shirt}"/>
+        <path d="M27.5 46.5 L32 51.5 L36.5 46.5 L36.5 44 L27.5 44 Z" fill="${skinShadow}"/>
+        <!-- Neck and ears -->
+        <rect x="28.4" y="38" width="7.2" height="8" rx="2.5" fill="${skinShadow}"/>
+        <circle cx="19.6" cy="30.5" r="2.7" fill="${skin}"/>
+        <circle cx="44.4" cy="30.5" r="2.7" fill="${skin}"/>
+        <!-- Head -->
+        <circle cx="32" cy="30" r="12.5" fill="${skin}"/>
+        <!-- Hair -->
+        ${hairMarkup(hairStyle, hair, avatarStyle.accentColor)}
+        <!-- Face -->
+        <circle cx="27.4" cy="31" r="1.7" fill="#241a12"/>
+        <circle cx="36.6" cy="31" r="1.7" fill="#241a12"/>
+        <path d="M27.8 37.2 Q32 40.4 36.2 37.2" fill="none" stroke="#7a4a28" stroke-width="1.7" stroke-linecap="round"/>
+        ${hairStyle === 'long' || hairStyle === 'bun' ? '<circle cx="23.4" cy="35.4" r="2.1" fill="#e8907c" opacity="0.45"/><circle cx="40.6" cy="35.4" r="2.1" fill="#e8907c" opacity="0.45"/>' : ''}
+        <!-- Shine -->
+        <ellipse cx="22" cy="14" rx="9" ry="5.5" fill="white" opacity="0.14"/>
       </g>
-
-      <!-- Border -->
-      <circle cx="${s / 2}" cy="${s / 2}" r="${s / 2 - 1}" fill="none" stroke="${avatarStyle.accentColor}" stroke-width="1" opacity="0.5"/>
-
-      <!-- Text initial -->
-      <text x="${s / 2}" y="${s / 2 + s * 0.15}" font-family="DM Mono, monospace" font-size="${s * 0.45}" font-weight="bold" fill="#173936" text-anchor="middle">${initial}</text>
-
-      <!-- Shine effect -->
-      <ellipse cx="${s * 0.35}" cy="${s * 0.35}" rx="${s * 0.15}" ry="${s * 0.2}" fill="white" opacity="0.15"/>
+      <circle cx="32" cy="32" r="30" fill="none" stroke="${avatarStyle.accentColor}" stroke-width="2"/>
     </svg>
   `
 }
