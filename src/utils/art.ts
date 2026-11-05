@@ -103,21 +103,66 @@ export function cardBackFanSVG(count: number): string {
 export function tableSVG(): string {
   return `<svg class="table-art" viewBox="0 0 1000 620" preserveAspectRatio="none" aria-hidden="true">
     <defs>
-      <radialGradient id="felt" cx="50%" cy="45%" r="65%">
-        <stop offset="0" stop-color="#2f7a69"/><stop offset=".6" stop-color="#1f5a4e"/><stop offset="1" stop-color="#123b34"/>
+      <radialGradient id="felt" cx="50%" cy="46%" r="62%">
+        <stop offset="0" stop-color="#1c6b52"/><stop offset=".55" stop-color="#0f4a39"/><stop offset="1" stop-color="#062a21"/>
       </radialGradient>
       <linearGradient id="rail" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#8a5a33"/><stop offset=".5" stop-color="#5d381e"/><stop offset="1" stop-color="#3d2413"/>
+        <stop offset="0" stop-color="#9a6438"/><stop offset=".35" stop-color="#6b3f1f"/><stop offset=".7" stop-color="#4a2a14"/><stop offset="1" stop-color="#2b170a"/>
       </linearGradient>
-      <filter id="feltNoise"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .07 0"/><feComposite in2="SourceGraphic" operator="in"/></filter>
+      <linearGradient id="brass" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#f3dc82"/><stop offset=".5" stop-color="#d4af37"/><stop offset="1" stop-color="#8c6c1d"/>
+      </linearGradient>
+      <radialGradient id="spot" cx="50%" cy="45%" r="45%"><stop offset="0" stop-color="#fff6d8" stop-opacity=".16"/><stop offset="1" stop-color="#fff6d8" stop-opacity="0"/></radialGradient>
+      <filter id="feltNoise"><feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="3" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .1 0"/><feComposite in2="SourceGraphic" operator="in"/></filter>
+      <filter id="woodGrain"><feTurbulence type="fractalNoise" baseFrequency=".004 .09" numOctaves="2"/><feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .18 0"/><feComposite in2="SourceGraphic" operator="in"/></filter>
+      <filter id="inset"><feGaussianBlur stdDeviation="10"/></filter>
     </defs>
-    <rect width="1000" height="620" fill="#0d2723"/>
-    <rect x="14" y="14" width="972" height="592" rx="300" fill="url(#rail)"/>
+    <rect width="1000" height="620" fill="#051a15"/>
+    <rect x="10" y="10" width="980" height="600" rx="300" fill="url(#rail)"/>
+    <rect x="10" y="10" width="980" height="600" rx="300" fill="#000" filter="url(#woodGrain)"/>
+    <rect x="12" y="12" width="976" height="596" rx="298" fill="none" stroke="#c48a52" stroke-opacity=".5" stroke-width="2"/>
+    <rect x="34" y="34" width="932" height="552" rx="276" fill="none" stroke="url(#brass)" stroke-width="4"/>
     <rect x="40" y="40" width="920" height="540" rx="270" fill="url(#felt)"/>
     <rect x="40" y="40" width="920" height="540" rx="270" fill="#000" filter="url(#feltNoise)"/>
-    <rect x="58" y="58" width="884" height="504" rx="252" fill="none" stroke="#e2b862" stroke-width="1.5" stroke-dasharray="2 7" opacity=".55"/>
-    <ellipse cx="500" cy="300" rx="170" ry="110" fill="none" stroke="#e2b862" stroke-width="1" opacity=".22"/>
-    <ellipse cx="500" cy="300" rx="120" ry="76" fill="none" stroke="#e2b862" stroke-width="1" opacity=".14"/>
-    <g opacity=".08">${suitGlyph('spades', 410, 300, 34, '#fff')}${suitGlyph('hearts', 470, 300, 34, '#fff')}${suitGlyph('clubs', 530, 300, 34, '#fff')}${suitGlyph('diamonds', 590, 300, 34, '#fff')}</g>
+    <rect x="40" y="40" width="920" height="540" rx="270" fill="none" stroke="#000" stroke-opacity=".55" stroke-width="22" filter="url(#inset)"/>
+    <rect x="40" y="40" width="920" height="540" fill="url(#spot)"/>
+    <rect x="64" y="64" width="872" height="492" rx="246" fill="none" stroke="#d4af37" stroke-width="1.4" stroke-dasharray="1 8" stroke-linecap="round" opacity=".6"/>
+    <ellipse cx="500" cy="300" rx="180" ry="116" fill="none" stroke="url(#brass)" stroke-width="1.5" opacity=".35"/>
+    <ellipse cx="500" cy="300" rx="128" ry="80" fill="#000" fill-opacity=".12" stroke="#d4af37" stroke-width="1" opacity=".5"/>
+    ${[0, 90, 180, 270].map((r) => `<path d="M500 176 l6 8 -6 8 -6 -8z" fill="#d4af37" opacity=".6" transform="rotate(${r} 500 300) "/>`).join('')}
+    <g opacity=".07">${suitGlyph('spades', 410, 300, 34, '#fff')}${suitGlyph('hearts', 470, 300, 34, '#fff')}${suitGlyph('clubs', 530, 300, 34, '#fff')}${suitGlyph('diamonds', 590, 300, 34, '#fff')}</g>
+  </svg>`
+}
+
+const avatarPalettes = [
+  { bg: '#e6b55a', skin: '#c98b5a', hair: '#2a1a12', shirt: '#2f6f62' },
+  { bg: '#de806c', skin: '#a8714a', hair: '#1a1210', shirt: '#33415e' },
+  { bg: '#8cc6bd', skin: '#d6a274', hair: '#3a2416', shirt: '#7a2330' },
+  { bg: '#b8a8d8', skin: '#b67c52', hair: '#120c0a', shirt: '#2b5a4f' },
+]
+
+/** Illustrated avatar; `seed` picks palette and hair style so each bot looks distinct. */
+export function avatarSVG(name: string, seat: number): string {
+  const seed = [...name].reduce((sum, ch) => sum + ch.charCodeAt(0), 0)
+  const p = avatarPalettes[seat % avatarPalettes.length] ?? avatarPalettes[0]!
+  const style = seed % 3
+  const hair = style === 0
+    ? `<path d="M30 44 C30 26 70 26 70 44 C66 36 58 34 50 34 C42 34 34 36 30 44 Z" fill="${p.hair}"/>`
+    : style === 1
+      ? `<path d="M28 50 C26 24 74 24 72 50 L72 66 C68 58 68 46 64 40 C56 44 44 44 36 40 C32 46 32 58 28 66 Z" fill="${p.hair}"/>`
+      : `<path d="M30 46 C28 30 40 24 50 24 C60 24 72 30 70 46 C64 40 60 38 50 40 C40 38 36 40 30 46 Z" fill="${p.hair}"/><circle cx="50" cy="24" r="7" fill="${p.hair}"/>`
+  return `<svg class="avatar-art" viewBox="0 0 100 100" aria-hidden="true">
+    <circle cx="50" cy="50" r="48" fill="${p.bg}"/>
+    <circle cx="50" cy="50" r="48" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="2"/>
+    <clipPath id="av-clip-${seat}"><circle cx="50" cy="50" r="46"/></clipPath>
+    <g clip-path="url(#av-clip-${seat})">
+      <path d="M18 100 C20 78 34 70 50 70 C66 70 80 78 82 100 Z" fill="${p.shirt}"/>
+      <rect x="44" y="60" width="12" height="12" rx="4" fill="${p.skin}"/>
+      <ellipse cx="50" cy="48" rx="19" ry="21" fill="${p.skin}"/>
+      ${hair}
+      <circle cx="43" cy="50" r="2.2" fill="#1b120d"/><circle cx="57" cy="50" r="2.2" fill="#1b120d"/>
+      <path d="M44 59 Q50 63 56 59" stroke="#5a2e1e" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <circle cx="39" cy="56" r="3" fill="#e0715f" opacity=".25"/><circle cx="61" cy="56" r="3" fill="#e0715f" opacity=".25"/>
+    </g>
   </svg>`
 }
