@@ -104,6 +104,13 @@ const recipes: Record<SoundType, (out: Output, at: number) => void> = {
 class SoundManager {
   private output: Output | null = null
   muted = false
+  platformMuted = false
+
+  // CrazyGames can mute the game from the site UI (SDK settings). That mute
+  // applies on top of the player's own toggle and is never persisted.
+  setPlatformMuted(value: boolean): void {
+    this.platformMuted = value
+  }
 
   constructor() {
     try {
@@ -147,7 +154,7 @@ class SoundManager {
   }
 
   private schedule(soundType: SoundType, delay: number): void {
-    if (this.muted) return
+    if (this.muted || this.platformMuted) return
     const out = this.ensureOutput()
     if (!out) return
     if (out.context.state === 'suspended') void out.context.resume()
