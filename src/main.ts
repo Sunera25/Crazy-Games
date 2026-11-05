@@ -3,7 +3,7 @@ import { createDeck, rankValue, shuffleDeck, type Card, type Suit } from './game
 import { dealFirstBatch, dealSecondBatch, type PartialDeal } from './game/deal.ts'
 import { chooseCard, chooseTrump } from './game/ai.ts'
 import { isLegalCard, scoreRound, trickWinner, type PlayedCard, type Team, teamForPlayer } from './game/rules.ts'
-import { gameplayStart, initializeCrazyGames, loadingStart, loadingStop } from './platform/crazygames.ts'
+import { gameplayStart, gameplayStop, initializeCrazyGames, loadingStart, loadingStop } from './platform/crazygames.ts'
 import { soundManager } from './utils/sounds.ts'
 import { createPlayerAvatarSVG, getAvatarColor } from './utils/index.ts'
 import { cardBackFanSVG, cardFaceSVG, suitIconSVG, tableSVG } from './utils/art.ts'
@@ -198,6 +198,7 @@ function finishRound(): void {
   if (matchOver) {
     message = tokens.northSouth >= 10 ? 'You won the match!' : 'The rivals won the match'
     soundManager.playSequence(tokens.northSouth >= 10 ? ['win', 'win'] : ['lose', 'lose'], 0.2)
+    gameplayStop()
   }
   render()
 }
@@ -219,6 +220,7 @@ function startRound(): void {
 }
 
 function newMatch(): void {
+  gameplayStart()
   tokens = { northSouth: 0, eastWest: 0 }
   carry = 0
   matchOver = false
@@ -243,7 +245,7 @@ function scheduleBotTrump(): void {
 loadingStart()
 showSplash()
 loadingStop()
-void initializeCrazyGames().then(gameplayStart)
+void initializeCrazyGames()
 
 function showSplash(showRules = false): void {
   const suits = (['spades', 'hearts', 'clubs', 'diamonds'] as Suit[]).map((suit, i) => `<span class="splash-suit s${i}">${suitIconSVG(suit, 40)}</span>`).join('')
