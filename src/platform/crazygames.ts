@@ -23,6 +23,7 @@ declare global {
 }
 
 let sdk: CrazyGamesSdk | null = null
+let gameplayActive = false
 
 export async function initializeCrazyGames(): Promise<void> {
   try {
@@ -44,6 +45,9 @@ export async function initializeCrazyGames(): Promise<void> {
     } catch {
       // Older SDK without settings listeners - the initial sync still applies.
     }
+    // If the player pressed Play before init finished, deliver the
+    // gameplay start that was requested earlier.
+    if (gameplayActive) candidate.game.gameplayStart()
   } catch {
     sdk = null
   }
@@ -58,9 +62,11 @@ export function loadingStop(): void {
 }
 
 export function gameplayStart(): void {
+  gameplayActive = true
   sdk?.game.gameplayStart()
 }
 
 export function gameplayStop(): void {
+  gameplayActive = false
   sdk?.game.gameplayStop()
 }
