@@ -357,3 +357,11 @@ button:focus-visible { outline: 2px solid #f0c46a; outline-offset: 2px; }
   .suit-picker { gap: 6px; }
   .suit-button { padding-left: 2px; padding-right: 2px; letter-spacing: .02em; }
 }
+
+/* ===== Full-width outer box + wider suit buttons (mobile) ===== */
+@media (max-width: 760px) {
+  .game-shell { padding-left: 0; padding-right: 0; }
+  .topbar, .footer-note { padding-left: 12px; padding-right: 12px; }
+  .table { border-radius: 0; }
+  .suit-picker { gap: 5px; }
+}
