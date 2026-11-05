@@ -1,4 +1,7 @@
-// Synthesized game sounds (Web Audio API). No audio files are loaded.
+// Soft synthesized card sounds (Web Audio API). No audio files are loaded.
+// Card actions (deal / play / shuffle / click) are filtered-noise snaps and
+// whooshes only — no oscillator beeps. Win / lose / score keep a quiet,
+// short sine chime at about half the old volume.
 type SoundType = 'deal' | 'play' | 'win' | 'lose' | 'score' | 'click' | 'shuffle'
 
 interface Output {
@@ -18,6 +21,7 @@ interface ToneOptions {
 
 interface BurstOptions {
   frequency: number
+  endFrequency?: number
   q: number
   duration: number
   gain: number
@@ -49,6 +53,9 @@ function playBurst(out: Output, at: number, options: BurstOptions): void {
   source.buffer = out.noise
   filter.type = 'bandpass'
   filter.frequency.setValueAtTime(options.frequency, start)
+  if (options.endFrequency) {
+    filter.frequency.exponentialRampToValueAtTime(options.endFrequency, start + options.duration)
+  }
   filter.Q.value = options.q
   envelope.gain.setValueAtTime(0.0001, start)
   envelope.gain.exponentialRampToValueAtTime(options.gain, start + Math.min(0.012, options.duration * 0.3))
@@ -60,48 +67,68 @@ function playBurst(out: Output, at: number, options: BurstOptions): void {
 
 const recipes: Record<SoundType, (out: Output, at: number) => void> = {
   deal: (out, at) => {
-    playBurst(out, at, { frequency: 2400, q: 0.9, duration: 0.09, gain: 0.35 })
-    playTone(out, at, { frequency: 260, endFrequency: 180, duration: 0.06, type: 'triangle', gain: 0.05 })
+    // Soft whoosh down, then a light card landing snap.
+    playBurst(out, at, { frequency: 1400, endFrequency: 500, q: 0.7, duration: 0.14, gain: 0.28 })
+    playBurst(out, at, { frequency: 2400, q: 1, duration: 0.04, gain: 0.16, offset: 0.09 })
   },
   play: (out, at) => {
-    playBurst(out, at, { frequency: 1400, q: 1.1, duration: 0.08, gain: 0.5 })
-    playTone(out, at, { frequency: 220, endFrequency: 150, duration: 0.09, type: 'triangle', gain: 0.18 })
+    // Card snap: short noise burst plus a soft low thump, no tone.
+    playBurst(out, at, { frequency: 1700, q: 1.2, duration: 0.06, gain: 0.42 })
+    playBurst(out, at, { frequency: 420, q: 0.8, duration: 0.05, gain: 0.14, offset: 0.01 })
   },
   shuffle: (out, at) => {
     const taps = [0, 0.05, 0.11, 0.19, 0.26]
     taps.forEach((offset, index) => {
-      playBurst(out, at, { frequency: 1800 + index * 300, q: 1.4, duration: 0.03, gain: 0.4, offset })
+      playBurst(out, at, { frequency: 1500 + index * 200, q: 1.2, duration: 0.035, gain: 0.26, offset })
     })
   },
   click: (out, at) => {
-    playTone(out, at, { frequency: 1100, duration: 0.05, type: 'sine', gain: 0.12 })
-    playBurst(out, at, { frequency: 4000, q: 2, duration: 0.02, gain: 0.2 })
+    playBurst(out, at, { frequency: 3200, q: 1.5, duration: 0.025, gain: 0.13 })
   },
   score: (out, at) => {
-    playTone(out, at, { frequency: 880, duration: 0.18, type: 'triangle', gain: 0.15 })
-    playTone(out, at, { frequency: 1318, duration: 0.25, type: 'triangle', gain: 0.15, offset: 0.08 })
+    playTone(out, at, { frequency: 880, duration: 0.15, type: 'sine', gain: 0.07 })
+    playTone(out, at, { frequency: 1318, duration: 0.2, type: 'sine', gain: 0.06, offset: 0.08 })
   },
   win: (out, at) => {
     const notes = [523.25, 659.25, 783.99, 1046.5]
     notes.forEach((frequency, index) => {
-      playTone(out, at, { frequency, duration: 0.35, type: 'triangle', gain: 0.16, offset: index * 0.09 })
+      playTone(out, at, { frequency, duration: 0.28, type: 'sine', gain: 0.08, offset: index * 0.09 })
     })
   },
   lose: (out, at) => {
-    playTone(out, at, { frequency: 392, duration: 0.25, type: 'sine', gain: 0.12 })
-    playTone(out, at, { frequency: 329.63, duration: 0.4, type: 'sine', gain: 0.12, offset: 0.18 })
+    playTone(out, at, { frequency: 392, duration: 0.22, type: 'sine', gain: 0.06 })
+    playTone(out, at, { frequency: 329.63, duration: 0.32, type: 'sine', gain: 0.06, offset: 0.18 })
   }
 }
 
 class SoundManager {
   private output: Output | null = null
+  muted = false
+
+  constructor() {
+    try {
+      this.muted = typeof window !== 'undefined' && window.localStorage.getItem('omi-muted') === '1'
+    } catch {
+      this.muted = false
+    }
+  }
+
+  toggleMute(): boolean {
+    this.muted = !this.muted
+    try {
+      window.localStorage.setItem('omi-muted', this.muted ? '1' : '0')
+    } catch {
+      // Storage unavailable (private mode etc.) — mute still applies for the session.
+    }
+    return this.muted
+  }
 
   private ensureOutput(): Output | null {
     if (this.output) return this.output
     if (typeof window === 'undefined' || !window.AudioContext) return null
     const context = new window.AudioContext()
     const master = context.createGain()
-    master.gain.value = 0.7
+    master.gain.value = 0.55
     const compressor = context.createDynamicsCompressor()
     master.connect(compressor).connect(context.destination)
     const noise = context.createBuffer(1, context.sampleRate * 0.5, context.sampleRate)
@@ -120,6 +147,7 @@ class SoundManager {
   }
 
   private schedule(soundType: SoundType, delay: number): void {
+    if (this.muted) return
     const out = this.ensureOutput()
     if (!out) return
     if (out.context.state === 'suspended') void out.context.resume()
