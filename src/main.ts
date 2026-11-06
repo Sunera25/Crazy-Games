@@ -4,7 +4,7 @@ import { dealFirstBatch, dealSecondBatch, type PartialDeal } from './game/deal.t
 import { chooseCard, chooseTrump } from './game/ai.ts'
 import { isLegalCard, scoreRound, trickWinner, type PlayedCard, type Team, teamForPlayer } from './game/rules.ts'
 import { gameplayStart, gameplayStop, initializeCrazyGames, loadingStart, loadingStop } from './platform/crazygames.ts'
-import { gdAdBreak, initializeGameDistribution } from './platform/gamedistribution.ts'
+import { gdAdBreak, gdAdsEnabled, gdRewardedAd, initializeGameDistribution } from './platform/gamedistribution.ts'
 import { soundManager } from './utils/sounds.ts'
 import { createPlayerAvatarSVG, getAvatarColor } from './utils/index.ts'
 import { cardBackFanSVG, cardFaceSVG, suitIconSVG, tableSVG } from './utils/art.ts'
@@ -37,6 +37,11 @@ let animatedPlays = 0
 let trickWinnerSeat: number | null = null
 let trickClosing = false
 let scoreBump = false
+let rewardPopup: 'hint' | 'second-chance' | null = null
+let hintCard: Card | null = null
+let hintUsedThisRound = false
+let secondChanceUsed = false
+let secondChanceAmount = 0
 const app = document.querySelector<HTMLDivElement>('#app')!
 
 const botNamePool = ['Nimal', 'Amaya', 'Kasun', 'Dilshan', 'Sahan', 'Tharushi', 'Isuru', 'Chathura']
@@ -63,8 +68,9 @@ function opponentMarkup(seat: number, side: string): string {
 function cardMarkup(card: Card, index: number): string {
   const legal = isLegalCard(hands[0], card, leadSuit)
   const selected = selectedCard?.suit === card.suit && selectedCard.rank === card.rank
+  const hinted = hintCard?.suit === card.suit && hintCard?.rank === card.rank
   const colorClass = card.suit === 'hearts' || card.suit === 'diamonds' ? 'red' : ''
-  return `<button class="card ${colorClass} ${legal ? 'legal' : 'muted'} ${selected ? 'selected' : ''} ${dealAnim ? 'dealing' : ''}" style="--i:${index}" data-card-index="${index}" ${legal ? '' : 'disabled'} aria-label="${card.rank} of ${suitNames[card.suit]}">${cardFaceSVG(card)}</button>`
+  return `<button class="card ${colorClass} ${legal ? 'legal' : 'muted'} ${selected ? 'selected' : ''} ${hinted ? 'hint-glow' : ''} ${dealAnim ? 'dealing' : ''}" style="--i:${index}" data-card-index="${index}" ${legal ? '' : 'disabled'} aria-label="${card.rank} of ${suitNames[card.suit]}">${cardFaceSVG(card)}</button>`
 }
 
 function sortedHand(hand: readonly Card[]): Card[] {
@@ -77,6 +83,7 @@ function sortedHand(hand: readonly Card[]): Card[] {
 
 function render(): void {
   const trumpLabel = trumpSuit ? `${suitSymbols[trumpSuit]} ${suitNames[trumpSuit]}` : 'Choose a trump suit'
+  const showHintButton = gdAdsEnabled() && !!trumpSuit && currentPlayer === 0 && !roundFinished && !matchOver && !trickClosing && !hintUsedThisRound && !rewardPopup
   const legalHint = leadSuit ? `Follow ${suitSymbols[leadSuit]} ${suitNames[leadSuit]}` : 'Lead any card to begin'
   const trickMarkup = trick.map((played, i) => {
     const fresh = i >= animatedPlays ? 'fresh' : ''
@@ -88,7 +95,7 @@ function render(): void {
   app.innerHTML = `<main class="game-shell">
     <header class="topbar"><div class="brand-lockup"><img class="brand-logo" src="${logoUrl}" alt="Omi" width="64" height="64"><div><p class="eyebrow">TRICK-TAKER</p><h1>Omi</h1></div></div><div class="match-meta"><span class="round-label">ROUND ${String(roundNumber).padStart(2, '0')}</span><span class="match-score">You <strong>${tokens.northSouth}</strong> : <strong>${tokens.eastWest}</strong> Rivals</span></div><div class="topbar-actions"><div class="round-label">TRUMP CALLER · ${playerName(trumpCaller).toUpperCase()}</div><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><button class="rules-button" type="button" data-action="rules" aria-expanded="${rulesOpen}">Rules</button><button class="new-game-button" type="button" data-action="new-game">New game</button></div></header>
     ${roundFinished || matchOver ? `<div class="result-banner ${matchOver ? 'match' : ''}"><strong>${message}</strong></div>` : ''}<section class="table" aria-label="Omi game table">${tableSVG()}<div class="table-glow"></div>${opponentMarkup(2, 'top')}${opponentMarkup(3, 'left')}${opponentMarkup(1, 'right')}<div class="trick-zone">${trickMarkup}</div>${trickScoreMarkup}${roundFinished || matchOver ? `<button class="primary-button table-continue" type="button" data-action="continue">${matchOver ? 'New game' : 'Continue'} <span>↗</span></button>` : ''}<div class="trump-panel"><span class="panel-label">TRUMP</span><strong>${trumpLabel}</strong><span class="carry-dot"></span></div><div class="player-panel"><div class="player-name ${currentPlayer === 0 && trumpSuit && !roundFinished ? 'active' : ''}"><span class="avatar">${createPlayerAvatarSVG('You', getAvatarColor('You'), 38)}</span><strong>You</strong></div><div class="hand">${sortedHand(hands[0] ?? []).map(cardMarkup).join('')}</div></div></section>
-    <section class="action-panel"><div class="action-copy"><span class="status-dot"></span><div><strong>${matchOver ? message : roundFinished ? message : trumpSuit ? (currentPlayer === 0 ? 'Your turn' : message) : (trumpCaller === 0 ? 'Choose your trump' : `${playerName(trumpCaller)} chooses trump`)}</strong><span>${matchOver ? 'Start a new match when you are ready.' : roundFinished ? 'The round is complete.' : trumpSuit ? `${trick.length}/4 cards in trick · ${legalHint}` : partialDeal ? 'Only the first four cards are dealt.' : 'Preparing the hand.'}</span></div></div><div class="suit-picker">${(['clubs', 'diamonds', 'hearts', 'spades'] as Suit[]).map((suit) => `<button class="suit-button ${trumpSuit === suit ? 'active' : ''}${suit === 'hearts' || suit === 'diamonds' ? ' suit-red' : ''}" data-suit="${suit}" type="button" ${trumpSuit || trumpCaller !== 0 || matchOver || roundFinished ? 'disabled' : ''}>${suitIconSVG(suit, 20)}${suitNames[suit]}</button>`).join('')}</div></section><p class="footer-note">FIRST TO 10 TOKENS WINS <span>•</span> KAPOTHI AWARDS 2</p>${rulesOpen ? rulesMarkup() : ''}</main>`
+    <section class="action-panel"><div class="action-copy"><span class="status-dot"></span><div><strong>${matchOver ? message : roundFinished ? message : trumpSuit ? (currentPlayer === 0 ? 'Your turn' : message) : (trumpCaller === 0 ? 'Choose your trump' : `${playerName(trumpCaller)} chooses trump`)}</strong><span>${matchOver ? 'Start a new match when you are ready.' : roundFinished ? 'The round is complete.' : trumpSuit ? `${trick.length}/4 cards in trick · ${legalHint}` : partialDeal ? 'Only the first four cards are dealt.' : 'Preparing the hand.'}</span></div></div><div class="suit-picker">${(['clubs', 'diamonds', 'hearts', 'spades'] as Suit[]).map((suit) => `<button class="suit-button ${trumpSuit === suit ? 'active' : ''}${suit === 'hearts' || suit === 'diamonds' ? ' suit-red' : ''}" data-suit="${suit}" type="button" ${trumpSuit || trumpCaller !== 0 || matchOver || roundFinished ? 'disabled' : ''}>${suitIconSVG(suit, 20)}${suitNames[suit]}</button>`).join('')}</div>${showHintButton ? '<button class="hint-button" type="button" data-action="hint">💡 Hint</button>' : ''}</section><p class="footer-note">FIRST TO 10 TOKENS WINS <span>•</span> KAPOTHI AWARDS 2</p>${rulesOpen ? rulesMarkup() : ''}${rewardPopup ? rewardPopupMarkup() : ''}</main>`
   dealAnim = false
   scoreBump = false
 
@@ -108,6 +115,34 @@ function render(): void {
     }
     void gdAdBreak('midroll').then(proceed)
   }))
+  app.querySelectorAll<HTMLButtonElement>('[data-action="hint"]').forEach((button) => button.addEventListener('click', () => { rewardPopup = 'hint'; render() }))
+  app.querySelectorAll<HTMLButtonElement>('[data-action="reward-watch"]').forEach((button) => button.addEventListener('click', () => { void watchRewardAd() }))
+  app.querySelectorAll<HTMLButtonElement>('[data-action="reward-skip"]').forEach((button) => button.addEventListener('click', () => { rewardPopup = null; soundManager.play('click'); render() }))
+}
+
+async function watchRewardAd(): Promise<void> {
+  const kind = rewardPopup
+  if (!kind) return
+  rewardPopup = null
+  render()
+  const watched = await gdRewardedAd()
+  if (kind === 'hint') {
+    if (watched && trumpSuit) {
+      hintCard = chooseCard(hands[0], trick, trumpSuit, 0)
+      hintUsedThisRound = true
+      message = 'The glowing card is the smart play'
+      soundManager.play('win')
+    } else if (!watched) {
+      message = 'No ad available right now — the hint is still yours to claim'
+    }
+  } else if (watched) {
+    tokens.eastWest = Math.max(0, tokens.eastWest - secondChanceAmount)
+    message = `Second chance! The rivals' ${secondChanceAmount} token${secondChanceAmount === 1 ? '' : 's'} cancelled`
+    soundManager.playSequence(['score', 'win'], 0.15)
+  } else {
+    message = 'No ad available right now — the score stands'
+  }
+  render()
 }
 
 function chooseHumanTrump(suit: Suit): void {
@@ -126,7 +161,7 @@ function chooseHumanTrump(suit: Suit): void {
 }
 
 function playHumanCard(index: number): void {
-  if (matchOver || roundFinished || !trumpSuit || currentPlayer !== 0 || trickClosing || !hands[0][index]) return
+  if (matchOver || roundFinished || rewardPopup || !trumpSuit || currentPlayer !== 0 || trickClosing || !hands[0][index]) return
   const displayedCard = sortedHand(hands[0])[index]
   const handIndex = hands[0].findIndex((card) => card.suit === displayedCard.suit && card.rank === displayedCard.rank)
   if (handIndex >= 0) playCard(0, handIndex)
@@ -134,6 +169,7 @@ function playHumanCard(index: number): void {
 
 function playCard(player: number, handIndex: number): void {
   const card = hands[player].splice(handIndex, 1)[0]
+  if (player === 0) hintCard = null
   trick.push({ player, card })
   soundManager.play('play')
   leadSuit = trick[0].card.suit
@@ -204,6 +240,13 @@ function finishRound(): void {
     soundManager.playSequence(tokens.northSouth >= 10 ? ['win', 'win'] : ['lose', 'lose'], 0.2)
     gameplayStop()
   }
+  // GameDistribution rewarded offer: once per match, when the rivals score,
+  // the player can watch an ad to cancel the tokens they just gained.
+  if (!matchOver && gdAdsEnabled() && result.winner === 'eastWest' && !secondChanceUsed) {
+    secondChanceUsed = true
+    secondChanceAmount = result.tokens
+    rewardPopup = 'second-chance'
+  }
   render()
 }
 
@@ -215,6 +258,7 @@ function startRound(): void {
   hands = partialDeal.hands
   dealAnim = true
   trumpSuit = null; leadSuit = null; selectedCard = null; trick = []; animatedPlays = 0; trickWinnerSeat = null; trickClosing = false; currentPlayer = trumpCaller
+  hintCard = null; hintUsedThisRound = false; rewardPopup = null
   roundFinished = false
   tricksWon = { northSouth: 0, eastWest: 0 }
   message = trumpCaller === 0 ? 'Choose your trump suit' : `${playerName(trumpCaller)} is choosing trump`
@@ -227,6 +271,7 @@ function newMatch(): void {
   gameplayStart()
   tokens = { northSouth: 0, eastWest: 0 }
   carry = 0
+  secondChanceUsed = false
   matchOver = false
   trumpCaller = 0
   playerNames = ['You', ...shuffledBotNames().slice(0, 3)]
@@ -268,6 +313,13 @@ function showSplash(showRules = false): void {
   app.querySelector('[data-action="how"]')?.addEventListener('click', () => showSplash(true))
   app.querySelector('[data-action="sound"]')?.addEventListener('click', () => { soundManager.toggleMute(); showSplash(showRules) })
   app.querySelectorAll<HTMLElement>('[data-action="close-rules"]').forEach((element) => element.addEventListener('click', (event) => { if (event.target === element || element.hasAttribute('data-rules-panel')) showSplash(false) }))
+}
+
+function rewardPopupMarkup(): string {
+  if (rewardPopup === 'hint') {
+    return `<div class="reward-backdrop"><section class="reward-panel" role="dialog" aria-modal="true" aria-labelledby="reward-title"><p class="reward-kicker">FREE HINT</p><div class="reward-icon" aria-hidden="true">💡</div><h2 id="reward-title">Stuck on a card?</h2><p class="reward-text">Watch a short ad and we will highlight the smartest card to play this turn.</p><button class="primary-button reward-watch" type="button" data-action="reward-watch">▶ Watch Ad</button><button class="reward-skip" type="button" data-action="reward-skip">No thanks</button></section></div>`
+  }
+  return `<div class="reward-backdrop"><section class="reward-panel" role="dialog" aria-modal="true" aria-labelledby="reward-title"><p class="reward-kicker">SECOND CHANCE</p><div class="reward-icon" aria-hidden="true">⏪</div><h2 id="reward-title">The rivals took that round</h2><p class="reward-text">Watch a short ad to cancel the ${secondChanceAmount} token${secondChanceAmount === 1 ? '' : 's'} they just scored. One second chance per match.</p><button class="primary-button reward-watch" type="button" data-action="reward-watch">▶ Watch Ad</button><button class="reward-skip" type="button" data-action="reward-skip">No thanks</button></section></div>`
 }
 
 function rulesMarkup(): string {

@@ -8,6 +8,7 @@ import { soundManager } from '../utils/sounds'
 
 type GdSdk = {
   showAd: (type?: string) => Promise<void> | void
+  preloadAd?: (type?: string) => Promise<void> | void
 }
 
 declare global {
@@ -26,6 +27,7 @@ export function initializeGameDistribution(): void {
   if (!isGdBuild) return
   window.addEventListener('gd:ready', () => {
     sdkReadyFlag = true
+    preloadRewarded()
   })
   // Video ads carry their own audio — the game must be silent while one plays.
   window.addEventListener('gd:pause', () => soundManager.setPlatformMuted(true))
@@ -34,6 +36,25 @@ export function initializeGameDistribution(): void {
 
 function canShowAd(): boolean {
   return isGdBuild && sdkReadyFlag && typeof window.gdsdk?.showAd === 'function'
+}
+
+// Rewarded popups are a GameDistribution feature; the CrazyGames build
+// never shows them.
+export function gdAdsEnabled(): boolean {
+  return isGdBuild
+}
+
+// Best practice per the GD wiki: keep a rewarded ad preloaded so it can
+// play the moment the player asks for a reward.
+function preloadRewarded(): void {
+  try {
+    const maybePromise = window.gdsdk?.preloadAd?.('rewarded')
+    if (maybePromise && typeof maybePromise.catch === 'function') {
+      maybePromise.catch(() => undefined)
+    }
+  } catch {
+    // Preloading is an optimization only.
+  }
 }
 
 // Show an interstitial at a natural break: 'preroll' before the first match,
@@ -80,6 +101,62 @@ export function gdAdBreak(kind: 'preroll' | 'midroll'): Promise<void> {
       }
     } catch {
       finish()
+    }
+  })
+}
+
+// Show a rewarded ad after the player opted in through a reward popup.
+// Resolves true ONLY when the SDK reports the ad was watched completely
+// (SDK_REWARDED_WATCH_COMPLETE, forwarded as 'gd:rewarded') — a skipped,
+// failed or unfilled ad resolves false and the game grants nothing.
+export function gdRewardedAd(): Promise<boolean> {
+  if (!canShowAd()) return Promise.resolve(false)
+  return new Promise((resolve) => {
+    let finished = false
+    let rewarded = false
+    let sawPause = false
+    const finish = (value: boolean) => {
+      if (finished) return
+      finished = true
+      window.removeEventListener('gd:rewarded', onRewarded)
+      window.removeEventListener('gd:pause', onPause)
+      window.removeEventListener('gd:start', onStart)
+      // A completed reward also counts as the latest ad, so the round-end
+      // interstitial does not fire straight after it.
+      if (value) lastMidrollAt = Date.now()
+      preloadRewarded()
+      resolve(value)
+    }
+    const onRewarded = () => {
+      rewarded = true
+    }
+    const onPause = () => {
+      sawPause = true
+    }
+    const onStart = () => {
+      if (sawPause) finish(rewarded)
+    }
+    window.addEventListener('gd:rewarded', onRewarded)
+    window.addEventListener('gd:pause', onPause)
+    window.addEventListener('gd:start', onStart)
+    // No ad filled: SDK_GAME_PAUSE never arrives, so give up quickly.
+    window.setTimeout(() => {
+      if (!sawPause) finish(false)
+    }, 2500)
+    // Rewarded videos can run long, but never hang the game.
+    window.setTimeout(() => finish(rewarded), 90_000)
+    try {
+      const maybePromise = window.gdsdk?.showAd('rewarded')
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise.then(
+          // The process ended; give the reward event a brief moment to
+          // land before deciding.
+          () => window.setTimeout(() => finish(rewarded), 350),
+          () => finish(false)
+        )
+      }
+    } catch {
+      finish(false)
     }
   })
 }

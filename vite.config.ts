@@ -16,7 +16,7 @@ const gdSnippet = [
   'window["GD_OPTIONS"] = {',
   '  gameId: "' + GD_GAME_ID + '",',
   '  onEvent: function (event) {',
-  '    var names = { SDK_READY: "gd:ready", SDK_GAME_PAUSE: "gd:pause", SDK_GAME_START: "gd:start" };',
+  '    var names = { SDK_READY: "gd:ready", SDK_GAME_PAUSE: "gd:pause", SDK_GAME_START: "gd:start", SDK_REWARDED_WATCH_COMPLETE: "gd:rewarded" };',
   '    var forwarded = names[event.name];',
   '    if (forwarded) window.dispatchEvent(new CustomEvent(forwarded));',
   '  }',
