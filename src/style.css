@@ -382,3 +382,13 @@ button:focus-visible { outline: 2px solid #f0c46a; outline-offset: 2px; }
   .topbar, .footer-note { padding-left: 4px; padding-right: 4px; }
   .table { border-radius: 12px; }
 }
+
+/* ===== Fit fix: no page scroll in short desktop frames (portal iframes, laptops) ===== */
+@media (min-width: 761px) {
+  .game-shell { height: 100dvh; min-height: 0; display: flex; flex-direction: column; }
+  .table { flex: 1 1 auto; min-height: 0; width: 100%; margin: 0 auto; }
+}
+@media (max-height: 700px) {
+  .splash-logo { width: min(240px, 36vh); }
+  .splash-inner { gap: 8px; }
+}
