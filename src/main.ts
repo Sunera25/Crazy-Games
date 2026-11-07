@@ -6,7 +6,7 @@ import { isLegalCard, scoreRound, trickWinner, type PlayedCard, type Team, teamF
 import { gameplayStart, gameplayStop, initializeCrazyGames, loadingStart, loadingStop } from './platform/crazygames.ts'
 import { gdAdBreak, gdAdsEnabled, gdRewardedAd, initializeGameDistribution } from './platform/gamedistribution.ts'
 import { soundManager } from './utils/sounds.ts'
-import { createPlayerAvatarSVG, getAvatarColor } from './utils/index.ts'
+import { createParticleEffectSVG, createPlayerAvatarSVG, getAvatarColor } from './utils/index.ts'
 import { cardBackFanSVG, cardFaceSVG, suitIconSVG, tableSVG } from './utils/art.ts'
 import { logoUrl } from './assets/omi-logo.ts'
 
@@ -42,6 +42,49 @@ let hintCard: Card | null = null
 let hintUsedThisRound = false
 let secondChanceUsed = false
 let secondChanceAmount = 0
+
+interface PlayerStats { played: number; won: number; streak: number; best: number; kapothis: number }
+let stats: PlayerStats = loadStats()
+let coachPending = loadCoachPending()
+
+function loadStats(): PlayerStats {
+  const empty: PlayerStats = { played: 0, won: 0, streak: 0, best: 0, kapothis: 0 }
+  try {
+    const raw = window.localStorage.getItem('omi-stats')
+    if (raw) return { ...empty, ...(JSON.parse(raw) as Partial<PlayerStats>) }
+  } catch { /* fresh stats */ }
+  return empty
+}
+
+function saveStats(): void {
+  try {
+    window.localStorage.setItem('omi-stats', JSON.stringify(stats))
+  } catch { /* session only */ }
+}
+
+function loadCoachPending(): boolean {
+  try {
+    return window.localStorage.getItem('omi-coach-done') !== '1'
+  } catch {
+    return true
+  }
+}
+
+function completeCoach(): void {
+  coachPending = false
+  try {
+    window.localStorage.setItem('omi-coach-done', '1')
+  } catch { /* session only */ }
+}
+
+function celebrate(): void {
+  const layer = document.createElement('div')
+  layer.className = 'confetti-layer'
+  layer.setAttribute('aria-hidden', 'true')
+  layer.innerHTML = createParticleEffectSVG('confetti')
+  document.body.appendChild(layer)
+  window.setTimeout(() => layer.remove(), 2600)
+}
 const app = document.querySelector<HTMLDivElement>('#app')!
 
 const botNamePool = ['Nimal', 'Amaya', 'Kasun', 'Dilshan', 'Sahan', 'Tharushi', 'Isuru', 'Chathura']
@@ -84,6 +127,15 @@ function sortedHand(hand: readonly Card[]): Card[] {
 function render(): void {
   const trumpLabel = trumpSuit ? `${suitSymbols[trumpSuit]} ${suitNames[trumpSuit]}` : 'Choose a trump suit'
   const showHintButton = gdAdsEnabled() && !!trumpSuit && currentPlayer === 0 && !roundFinished && !matchOver && !trickClosing && !hintUsedThisRound && !rewardPopup
+  const coachText = !coachPending || rewardPopup || rulesOpen || roundFinished || matchOver ? '' :
+    !trumpSuit && trumpCaller === 0
+      ? 'First, choose your trump suit — pick the suit where your cards are strongest.'
+      : trumpSuit && currentPlayer === 0
+        ? trick.length === 0
+          ? 'Your lead — tap any card to play it. The highest card of the led suit wins the trick, unless someone trumps in.'
+          : 'Follow the led suit if you can — your playable cards are the bright ones.'
+        : ''
+  const coachMarkup = coachText ? `<div class="coach-tip"><span>💡 ${coachText}</span><button type="button" data-action="coach-skip">Skip tips</button></div>` : ''
   const legalHint = leadSuit ? `Follow ${suitSymbols[leadSuit]} ${suitNames[leadSuit]}` : 'Lead any card to begin'
   const trickMarkup = trick.map((played, i) => {
     const fresh = i >= animatedPlays ? 'fresh' : ''
@@ -94,8 +146,8 @@ function render(): void {
   const trickScoreMarkup = `<div class="trick-score"><span><b>You + ${playerName(2)}</b><strong class="${scoreBump ? 'bump' : ''}">${tricksWon.northSouth}</strong></span><span><b>${playerName(1)} + ${playerName(3)}</b><strong class="${scoreBump ? 'bump' : ''}">${tricksWon.eastWest}</strong></span></div>`
   app.innerHTML = `<main class="game-shell">
     <header class="topbar"><div class="brand-lockup"><img class="brand-logo" src="${logoUrl}" alt="Omi" width="64" height="64"><div><p class="eyebrow">TRICK-TAKER</p><h1>Omi</h1></div></div><div class="match-meta"><span class="round-label">ROUND ${String(roundNumber).padStart(2, '0')}</span><span class="match-score">You <strong>${tokens.northSouth}</strong> : <strong>${tokens.eastWest}</strong> Rivals</span></div><div class="topbar-actions"><div class="round-label">TRUMP CALLER · ${playerName(trumpCaller).toUpperCase()}</div><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><button class="rules-button" type="button" data-action="rules" aria-expanded="${rulesOpen}">Rules</button><button class="new-game-button" type="button" data-action="new-game">New game</button></div></header>
-    ${roundFinished || matchOver ? `<div class="result-banner ${matchOver ? 'match' : ''}"><strong>${message}</strong></div>` : ''}<section class="table" aria-label="Omi game table">${tableSVG()}<div class="table-glow"></div>${opponentMarkup(2, 'top')}${opponentMarkup(3, 'left')}${opponentMarkup(1, 'right')}<div class="trick-zone">${trickMarkup}</div>${trickScoreMarkup}${roundFinished || matchOver ? `<button class="primary-button table-continue" type="button" data-action="continue">${matchOver ? 'New game' : 'Continue'} <span>↗</span></button>` : ''}<div class="trump-panel"><span class="panel-label">TRUMP</span><strong>${trumpLabel}</strong><span class="carry-dot"></span></div><div class="player-panel"><div class="player-name ${currentPlayer === 0 && trumpSuit && !roundFinished ? 'active' : ''}"><span class="avatar">${createPlayerAvatarSVG('You', getAvatarColor('You'), 38)}</span><strong>You</strong></div><div class="hand">${sortedHand(hands[0] ?? []).map(cardMarkup).join('')}</div></div></section>
-    <section class="action-panel"><div class="action-copy"><span class="status-dot"></span><div><strong>${matchOver ? message : roundFinished ? message : trumpSuit ? (currentPlayer === 0 ? 'Your turn' : message) : (trumpCaller === 0 ? 'Choose your trump' : `${playerName(trumpCaller)} chooses trump`)}</strong><span>${matchOver ? 'Start a new match when you are ready.' : roundFinished ? 'The round is complete.' : trumpSuit ? `${trick.length}/4 cards in trick · ${legalHint}` : partialDeal ? 'Only the first four cards are dealt.' : 'Preparing the hand.'}</span></div></div><div class="suit-picker">${(['clubs', 'diamonds', 'hearts', 'spades'] as Suit[]).map((suit) => `<button class="suit-button ${trumpSuit === suit ? 'active' : ''}${suit === 'hearts' || suit === 'diamonds' ? ' suit-red' : ''}" data-suit="${suit}" type="button" ${trumpSuit || trumpCaller !== 0 || matchOver || roundFinished ? 'disabled' : ''}>${suitIconSVG(suit, 20)}${suitNames[suit]}</button>`).join('')}</div>${showHintButton ? '<button class="hint-button" type="button" data-action="hint">💡 Hint</button>' : ''}</section><p class="footer-note">FIRST TO 10 TOKENS WINS <span>•</span> KAPOTHI AWARDS 2</p>${rulesOpen ? rulesMarkup() : ''}${rewardPopup ? rewardPopupMarkup() : ''}</main>`
+    ${roundFinished || matchOver ? `<div class="result-banner ${matchOver ? 'match' : ''}"><strong>${message}</strong></div>` : ''}${coachMarkup}<section class="table" aria-label="Omi game table">${tableSVG()}<div class="table-glow"></div>${opponentMarkup(2, 'top')}${opponentMarkup(3, 'left')}${opponentMarkup(1, 'right')}<div class="trick-zone">${trickMarkup}</div>${trickScoreMarkup}${roundFinished || matchOver ? `<button class="primary-button table-continue" type="button" data-action="continue">${matchOver ? 'New game' : 'Continue'} <span>↗</span></button>` : ''}<div class="trump-panel"><span class="panel-label">TRUMP</span><strong>${trumpLabel}</strong><span class="carry-dot"></span></div><div class="player-panel"><div class="player-name ${currentPlayer === 0 && trumpSuit && !roundFinished ? 'active' : ''}"><span class="avatar">${createPlayerAvatarSVG('You', getAvatarColor('You'), 38)}</span><strong>You</strong></div><div class="hand">${sortedHand(hands[0] ?? []).map(cardMarkup).join('')}</div></div></section>
+    <section class="action-panel"><div class="action-copy"><span class="status-dot"></span><div><strong>${matchOver ? message : roundFinished ? message : trumpSuit ? (currentPlayer === 0 ? 'Your turn' : message) : (trumpCaller === 0 ? 'Choose your trump' : `${playerName(trumpCaller)} chooses trump`)}</strong><span>${matchOver ? 'Start a new match when you are ready.' : roundFinished ? 'The round is complete.' : trumpSuit ? `${trick.length}/4 cards in trick · ${legalHint}` : partialDeal ? 'Only the first four cards are dealt.' : 'Preparing the hand.'}</span></div></div><div class="suit-picker">${(['clubs', 'diamonds', 'hearts', 'spades'] as Suit[]).map((suit) => `<button class="suit-button ${trumpSuit === suit ? 'active' : ''}${suit === 'hearts' || suit === 'diamonds' ? ' suit-red' : ''}" data-suit="${suit}" type="button" ${trumpSuit || trumpCaller !== 0 || matchOver || roundFinished ? 'disabled' : ''}>${suitIconSVG(suit, 20)}${suitNames[suit]}</button>`).join('')}</div>${showHintButton ? '<button class="hint-button" type="button" data-action="hint">💡 Hint</button>' : ''}</section><p class="footer-note">FIRST TO 10 TOKENS WINS <span>•</span> KAPOTHI AWARDS 2${stats.played > 0 ? ` <span>•</span> MATCHES WON ${stats.won}/${stats.played}` : ''}</p>${rulesOpen ? rulesMarkup() : ''}${rewardPopup ? rewardPopupMarkup() : ''}</main>`
   dealAnim = false
   scoreBump = false
 
@@ -118,6 +170,7 @@ function render(): void {
   app.querySelectorAll<HTMLButtonElement>('[data-action="hint"]').forEach((button) => button.addEventListener('click', () => { rewardPopup = 'hint'; render() }))
   app.querySelectorAll<HTMLButtonElement>('[data-action="reward-watch"]').forEach((button) => button.addEventListener('click', () => { void watchRewardAd() }))
   app.querySelectorAll<HTMLButtonElement>('[data-action="reward-skip"]').forEach((button) => button.addEventListener('click', () => { rewardPopup = null; soundManager.play('click'); render() }))
+  app.querySelectorAll<HTMLButtonElement>('[data-action="coach-skip"]').forEach((button) => button.addEventListener('click', () => { completeCoach(); render() }))
 }
 
 async function watchRewardAd(): Promise<void> {
@@ -169,7 +222,10 @@ function playHumanCard(index: number): void {
 
 function playCard(player: number, handIndex: number): void {
   const card = hands[player].splice(handIndex, 1)[0]
-  if (player === 0) hintCard = null
+  if (player === 0) {
+    hintCard = null
+    if (coachPending) completeCoach()
+  }
   trick.push({ player, card })
   soundManager.play('play')
   leadSuit = trick[0].card.suit
@@ -221,9 +277,16 @@ function finishTrick(): void {
 function finishRound(): void {
   const result = scoreRound(tricksWon.northSouth, tricksWon.eastWest, carry, teamForPlayer(trumpCaller))
   carry = result.carry
+  const tokensBefore = tokens.northSouth
   if (result.winner) tokens[result.winner] += result.tokens
+  if (result.isKapothi && result.winner === 'northSouth') {
+    stats.kapothis += 1
+    saveStats()
+  }
   const winnerLabel = result.winner === 'northSouth' ? 'Your team' : 'The rival team'
   message = result.winner ? `${winnerLabel} won ${result.tokens} token${result.tokens === 1 ? '' : 's'}${result.isKapothi ? ' · Kapothi!' : ''}` : '4–4 tie · one token carries over'
+  if (result.winner === 'northSouth' && tokensBefore < 5 && tokens.northSouth >= 5) message += ' · Halfway to the match!'
+  if (result.winner === 'northSouth' && tokensBefore < 9 && tokens.northSouth >= 9) message += ' · Match point!'
 
   if (result.winner === 'northSouth') {
     soundManager.playSequence(['score', 'win'], 0.15)
@@ -239,7 +302,17 @@ function finishRound(): void {
     message = tokens.northSouth >= 10 ? 'You won the match!' : 'The rivals won the match'
     soundManager.playSequence(tokens.northSouth >= 10 ? ['win', 'win'] : ['lose', 'lose'], 0.2)
     gameplayStop()
+    stats.played += 1
+    if (tokens.northSouth >= 10) {
+      stats.won += 1
+      stats.streak += 1
+      stats.best = Math.max(stats.best, stats.streak)
+    } else {
+      stats.streak = 0
+    }
+    saveStats()
   }
+  if ((result.isKapothi && result.winner === 'northSouth') || (matchOver && tokens.northSouth >= 10)) celebrate()
   // GameDistribution rewarded offer: once per match, when the rivals score,
   // the player can watch an ad to cancel the tokens they just gained.
   if (!matchOver && gdAdsEnabled() && result.winner === 'eastWest' && !secondChanceUsed) {
@@ -269,6 +342,7 @@ function startRound(): void {
 
 function newMatch(): void {
   gameplayStart()
+  soundManager.startMusic()
   tokens = { northSouth: 0, eastWest: 0 }
   carry = 0
   secondChanceUsed = false
@@ -302,9 +376,10 @@ if (import.meta.env.MODE === 'gamedistribution') {
 
 function showSplash(showRules = false): void {
   const suits = (['spades', 'hearts', 'clubs', 'diamonds'] as Suit[]).map((suit, i) => `<span class="splash-suit s${i}">${suitIconSVG(suit, 40)}</span>`).join('')
-  app.innerHTML = `<main class="splash">${suits}<button class="new-game-button splash-sound" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><div class="splash-inner"><img class="splash-logo" src="${logoUrl}" alt="Omi"><p class="splash-tag">The Sri Lankan trick-taking classic</p><button class="play-button" type="button" data-action="play">Play</button><button class="splash-rules" type="button" data-action="how">How to play</button><p class="splash-foot">4 players · 2 teams · First to 10 tokens</p></div>${showRules ? rulesMarkup() : ''}</main>`
+  app.innerHTML = `<main class="splash">${suits}<button class="new-game-button splash-sound" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><div class="splash-inner"><img class="splash-logo" src="${logoUrl}" alt="Omi"><p class="splash-tag">The Sri Lankan trick-taking classic</p>${stats.played > 0 ? `<p class="splash-stats">Matches won ${stats.won} of ${stats.played}${stats.best > 1 ? ` · Best streak ${stats.best}` : ''}${stats.kapothis > 0 ? ` · Kapothis ${stats.kapothis}` : ''}</p>` : ''}<button class="play-button" type="button" data-action="play">Play</button><button class="splash-rules" type="button" data-action="how">How to play</button><p class="splash-foot">4 players · 2 teams · First to 10 tokens</p></div>${showRules ? rulesMarkup() : ''}</main>`
   app.querySelector('[data-action="play"]')?.addEventListener('click', () => {
     soundManager.play('click')
+    soundManager.startMusic()
     void gdAdBreak('preroll').then(() => {
       app.querySelector('.splash')?.classList.add('leaving')
       window.setTimeout(newMatch, 450)

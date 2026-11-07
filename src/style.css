@@ -410,3 +410,11 @@ button:focus-visible { outline: 2px solid #f0c46a; outline-offset: 2px; }
 .reward-watch { width: 100%; padding: 15px 20px; font-size: 16px; }
 .reward-skip { margin-top: 14px; padding: 4px 8px; border: 0; color: #c2d7ca; background: transparent; font: 600 13px 'Manrope', sans-serif; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .reward-skip:hover { color: #f1c56d; }
+
+/* ===== Quality pass: coach tips, stats, celebrations ===== */
+.coach-tip { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 0 auto 10px; width: 100%; max-width: 1380px; padding: 10px 16px; border: 1px solid #d4af3766; border-radius: 12px; color: #ffe9a8; background: #2a2110e6; font-size: 14px; line-height: 1.45; box-shadow: 0 10px 30px #0007; animation: fadeUp .35s ease both; }
+.coach-tip button { flex: none; padding: 5px 10px; border: 1px solid #d4af3788; border-radius: 999px; color: #f3dc82; background: transparent; font: 600 12px 'Manrope', sans-serif; cursor: pointer; }
+.coach-tip button:hover { background: #d4af3722; }
+.splash-stats { margin: -4px 0 4px; color: #e8ba63; font: 600 12px 'DM Mono', monospace; letter-spacing: .14em; text-transform: uppercase; animation: fadeUp .6s .55s ease both; }
+.confetti-layer { position: fixed; inset: 0; z-index: 45; display: grid; justify-items: center; align-items: start; pointer-events: none; overflow: hidden; }
+.confetti-layer svg { width: min(680px, 100vw); height: auto; }
