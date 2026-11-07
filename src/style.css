@@ -571,3 +571,16 @@ button:focus-visible { outline: 2px solid #f0c46a; outline-offset: 2px; }
 .splash-bottom { left: 50%; right: auto; transform: translateX(-50%); width: min(1060px, 100%); }
 .splash::after { content: ''; position: absolute; z-index: 0; left: 50%; top: 50%; width: min(880px, 94vw); height: min(620px, 78vh); transform: translate(-50%, -54%); border-radius: 50%; background: radial-gradient(ellipse at center, #2f9e7430 0%, #2f9e7414 45%, transparent 70%); pointer-events: none; }
 .splash-inner { z-index: 1; gap: 18px; }
+
+/* ===== Home: breathing room at the top and bottom edges ===== */
+.splash-top { top: 14px; }
+.splash-bottom { bottom: 14px; }
+.splash-wallet { top: 80px; }
+@media (max-width: 560px) {
+  .splash-wallet { top: 76px; }
+}
+
+/* The claimed daily bonus / finished wheel read as muted buttons, not
+   loose text, so the corners always look like controls. */
+.daily-done { display: inline-block; margin: 0; padding: 12px 18px; border: 1px solid #d4af3740; border-radius: 999px; color: #9fc3ae; background: #0e4d3a59; font: 600 14px 'Manrope', sans-serif; white-space: nowrap; }
+.splash-bottom .daily-done { padding: 12px 18px; }
