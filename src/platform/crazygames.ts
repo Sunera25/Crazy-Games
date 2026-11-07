@@ -128,6 +128,10 @@ export async function loginWithCrazyGames(): Promise<void> {
 // or failed ad must never stall play.
 export function crazyGamesAdBreak(kind: 'preroll' | 'midroll'): Promise<void> {
   if (kind === 'preroll') return Promise.resolve()
+  // A midgame ad must not be combined with a rewarded ad at the same
+  // break: if the player just watched a rewarded ad (Second Chance,
+  // hint), skip the midroll, mirroring the GameDistribution throttle.
+  if (Date.now() - lastRewardedWatchedAt < 150_000) return Promise.resolve()
   const candidate = sdk
   if (!candidate?.ad?.requestAd) return Promise.resolve()
   const ad = candidate.ad
@@ -154,6 +158,8 @@ export function crazyGamesAdBreak(kind: 'preroll' | 'midroll'): Promise<void> {
 
 export type CgRewardedResult = 'watched' | 'failed' | 'unavailable'
 
+let lastRewardedWatchedAt = 0
+
 // Rewarded ad for the CrazyGames build. Per the platform's ad rules the
 // reward is granted only on adFinished — an adError (unfilled, blocked,
 // dismissed) grants nothing. 'unavailable' means there is no ad module at
@@ -174,7 +180,10 @@ export function crazyGamesRewardedAd(): Promise<CgRewardedResult> {
     try {
       ad.requestAd('rewarded', {
         adStarted: () => soundManager.setPlatformMuted(true),
-        adFinished: () => finish('watched'),
+        adFinished: () => {
+          lastRewardedWatchedAt = Date.now()
+          finish('watched')
+        },
         adError: () => finish('failed')
       })
     } catch {
