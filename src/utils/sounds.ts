@@ -104,12 +104,15 @@ const recipes: Record<SoundType, (out: Output, at: number) => void> = {
 }
 
 // --- Background music -----------------------------------------------------
-// A rendered 32-second lounge loop (src/assets/music.mp3): electric-piano
-// chords, a soft bass and a sparse melody line, crossfaded at the seam so
-// it loops without a join. It replaces an earlier generated pad loop that
-// players found annoying and repetitive. Playback volume follows the same
-// mute rules as the effects (the player's toggle and the platform mute).
-const MUSIC_VOLUME = 0.4
+// A rendered 32-second ambient pad wash (src/assets/music.mp3): four slow
+// chords swelling into each other over 8 seconds each — no melody, no
+// bass line, no beat — crossfaded at the seam so it loops without a join.
+// It replaces two earlier attempts (a generated pad loop, then an
+// electric-piano track) that players still found annoying; this one is
+// mixed deliberately quiet, as background atmosphere. Playback volume
+// follows the same mute rules as the effects (the player's toggle and
+// the platform mute).
+const MUSIC_VOLUME = 0.85
 
 class SoundManager {
   private output: Output | null = null

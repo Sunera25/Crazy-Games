@@ -584,3 +584,21 @@ button:focus-visible { outline: 2px solid #f0c46a; outline-offset: 2px; }
    loose text, so the corners always look like controls. */
 .daily-done { display: inline-block; margin: 0; padding: 12px 18px; border: 1px solid #d4af3740; border-radius: 999px; color: #9fc3ae; background: #0e4d3a59; font: 600 14px 'Manrope', sans-serif; white-space: nowrap; }
 .splash-bottom .daily-done { padding: 12px 18px; }
+
+/* ===== No page scroll, ever: the game fits the viewport =====
+   On some displays the page could scroll (tall logo on mid-height
+   laptops; the table's min-height on small phones). The page is now
+   locked to the viewport and the content flexes to fit inside it. */
+html, body { height: 100%; }
+body { height: 100dvh; overflow: hidden; }
+#app { height: 100%; }
+.splash { height: 100dvh; min-height: 0; }
+.game-shell { height: 100dvh; min-height: 0; }
+@media (max-width: 760px) {
+  .table { min-height: 0; }
+}
+@media (max-height: 900px) {
+  .splash { padding: 48px 0 78px; }
+  .splash-logo { width: min(240px, 30vh); }
+  .splash-inner { gap: 10px; }
+}
