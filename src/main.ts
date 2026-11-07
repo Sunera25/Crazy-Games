@@ -100,42 +100,37 @@ const WIN_COINS = 60
 const LOSE_COINS = 10
 const DAILY_COINS = 100
 
-export interface AvatarChoice {
-  seed: string
-  style: string
-  name: string
-  tier: 'free' | 'stylish' | 'elite' | 'legendary'
-  cost: number
-  accessory?: string
-}
-
-const AVATAR_CHOICES: AvatarChoice[] = [
-  { seed: 'You', style: 'saffron', name: 'Rookie Cardist', tier: 'free', cost: 0 },
-  { seed: 'Amaya', style: 'rose', name: 'Amaya', tier: 'free', cost: 0 },
-  { seed: 'Kasun', style: 'sky', name: 'Kasun', tier: 'free', cost: 0 },
-  { seed: 'Tharushi', style: 'lavender', name: 'Tharushi', tier: 'free', cost: 0 },
-  { seed: 'Nimal', style: 'mint', name: 'Nimal', tier: 'free', cost: 0 },
-  { seed: 'Dilshan', style: 'coral', name: 'Dilshan', tier: 'free', cost: 0 },
-  { seed: 'Isuru', style: 'sky', name: 'Street Shuffler', tier: 'stylish', cost: 5, accessory: 'headphones' },
-  { seed: 'Chathura', style: 'coral', name: 'Cool Dealer', tier: 'stylish', cost: 5, accessory: 'shades' },
-  { seed: 'Sahan', style: 'mint', name: 'Card Scholar', tier: 'stylish', cost: 5, accessory: 'glasses' },
-  { seed: 'Kavya', style: 'rose', name: 'Card Club Ace', tier: 'stylish', cost: 5, accessory: 'cap' },
-  { seed: 'Ruwan', style: 'lavender', name: 'Club Beats', tier: 'stylish', cost: 5, accessory: 'headphones' },
-  { seed: 'Tharindu', style: 'gold', name: 'High Roller', tier: 'elite', cost: 10, accessory: 'gold-shades' },
-  { seed: 'Ananya', style: 'emerald', name: 'Emerald Queen', tier: 'elite', cost: 10, accessory: 'tiara' },
-  { seed: 'Victor', style: 'ruby', name: 'Velvet Magician', tier: 'elite', cost: 10, accessory: 'top-hat' },
-  { seed: 'Malik', style: 'obsidian', name: 'Shadow Monarch', tier: 'elite', cost: 10, accessory: 'monocle' },
-  { seed: 'Zephyr', style: 'cyber', name: 'Cyber Prodigy', tier: 'elite', cost: 10, accessory: 'cyber-visor' },
-  { seed: 'Sovereign', style: 'gold', name: 'Omi King', tier: 'legendary', cost: 20, accessory: 'crown' },
-  { seed: 'Empress', style: 'gold', name: 'Golden Empress', tier: 'legendary', cost: 20, accessory: 'crown-jewel' },
-  { seed: 'Phantom', style: 'midnight', name: 'Cosmic Cardmaster', tier: 'legendary', cost: 20, accessory: 'cosmic-halo' },
-  { seed: 'Overlord', style: 'cyber', name: 'Neon Sovereign', tier: 'legendary', cost: 20, accessory: 'cyber-crown' }
+const AVATAR_CHOICES = [
+  { seed: 'You', style: 'saffron', label: 'Rookie Cardist', tier: 0 },
+  { seed: 'Amaya', style: 'rose', label: 'Amaya', tier: 0 },
+  { seed: 'Kasun', style: 'sky', label: 'Kasun', tier: 0 },
+  { seed: 'Tharushi', style: 'lavender', label: 'Tharushi', tier: 0 },
+  { seed: 'Nimal', style: 'mint', label: 'Nimal', tier: 0 },
+  { seed: 'Dilshan', style: 'coral', label: 'Dilshan', tier: 0 },
+  { seed: 'Isuru', style: 'sky', label: 'Street Shuffler', tier: 1 },
+  { seed: 'Chathura', style: 'coral', label: 'Cool Dealer', tier: 1 },
+  { seed: 'Sahan', style: 'mint', label: 'Card Scholar', tier: 1 },
+  { seed: 'Kavya', style: 'rose', label: 'Card Club Ace', tier: 1 },
+  { seed: 'Ruwan', style: 'lavender', label: 'Club Beats', tier: 1 },
+  { seed: 'Tharindu', style: 'saffron', label: 'Golden Dealer', tier: 2 },
+  { seed: 'Sanduni', style: 'lavender', label: 'Royal Flush', tier: 2 },
+  { seed: 'Thisara', style: 'mint', label: 'Diamond Ace', tier: 2 }
 ]
 
+// Wardrobe tiers: Starter is free, higher tiers unlock per avatar with gems.
+const AVATAR_TIERS = [
+  { name: 'Starter Collection', price: 0 },
+  { name: 'Stylish Collection', price: 5 },
+  { name: 'Elite Cardists', price: 15 }
+]
+
+function avatarPrice(index: number): number {
+  const tier = AVATAR_TIERS[AVATAR_CHOICES[index]?.tier ?? 0]
+  return tier ? tier.price : 0
+}
+
 function isAvatarUnlocked(index: number): boolean {
-  const choice = AVATAR_CHOICES[index]
-  if (!choice) return false
-  return choice.cost === 0 || profile.unlocked.includes(index)
+  return avatarPrice(index) === 0 || profile.unlocked.includes(index)
 }
 
 interface Wallet { coins: number; gems: number; lastDaily: string; lastWheel: string; wheelDay: string; wheelSpins: number }
@@ -187,7 +182,7 @@ function dailyAvailable(): boolean {
   return wallet.lastDaily !== todayKey()
 }
 
-function myAvatar(): AvatarChoice {
+function myAvatar(): { seed: string; style: string } {
   const index = isAvatarUnlocked(profile.avatar) ? profile.avatar : 0
   return AVATAR_CHOICES[index] ?? AVATAR_CHOICES[0]
 }
@@ -206,7 +201,7 @@ let cgAccount: CgAccount = { available: false, username: null, pictureUrl: null 
 function playerAvatarMarkup(size: number): string {
   if (cgAccount.pictureUrl) return `<img class="cg-avatar-img" src="${escapeHtml(cgAccount.pictureUrl)}" width="${size}" height="${size}" alt="">`
   const c = myAvatar()
-  return createPlayerAvatarSVG(c.seed, c.style, size, c.accessory, c.tier)
+  return createPlayerAvatarSVG(c.seed, c.style, size)
 }
 
 function recordLine(): string {
@@ -431,7 +426,7 @@ function render(): void {
   animatedPlays = trick.length
   const trickScoreMarkup = `<div class="trick-score"><span><b>We</b><strong class="${scoreBump ? 'bump' : ''}">${tricksWon.northSouth}</strong></span><span><b>Them</b><strong class="${scoreBump ? 'bump' : ''}">${tricksWon.eastWest}</strong></span></div>`
   app.innerHTML = `<main class="game-shell">
-    <header class="topbar"><div class="brand-lockup"><img class="brand-logo" src="${logoUrl}" alt="Omi" width="64" height="64"><div><p class="eyebrow">TRICK-TAKER</p><h1>Omi</h1></div></div><div class="match-meta"><span class="round-label">ROUND ${String(roundNumber).padStart(2, '0')}</span><span class="match-score">You <strong>${tokens.northSouth}</strong> : <strong>${tokens.eastWest}</strong> Rivals</span></div><div class="topbar-actions"><span class="wallet-chip inline">🪙 ${wallet.coins}</span><button class="new-game-button" type="button" data-action="home">🏠 Home</button><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><button class="rules-button" type="button" data-action="rules" aria-expanded="${rulesOpen}">Rules</button><button class="new-game-button" type="button" data-action="new-game">New game</button></div></header>
+    <header class="topbar"><div class="brand-lockup"><img class="brand-logo" src="${logoUrl}" alt="Omi" width="64" height="64"><div><p class="eyebrow">TRICK-TAKER</p><h1>Omi</h1></div></div><div class="match-meta"><span class="round-label">ROUND ${String(roundNumber).padStart(2, '0')}</span><span class="match-score">You <strong>${tokens.northSouth}</strong> : <strong>${tokens.eastWest}</strong> Rivals</span></div><div class="topbar-actions"><span class="wallet-chip inline">🪙 ${wallet.coins} · 💎 ${wallet.gems}</span><button class="new-game-button" type="button" data-action="home">🏠 Home</button><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><button class="rules-button" type="button" data-action="rules" aria-expanded="${rulesOpen}">Rules</button><button class="new-game-button" type="button" data-action="new-game">New game</button></div></header>
     ${roundFinished || matchOver ? `<div class="result-banner ${matchOver ? 'match' : ''}"><strong>${message}</strong></div>` : ''}${coachMarkup}<section class="table" aria-label="Omi game table">${tableSVG()}<div class="table-glow"></div>${opponentMarkup(2, 'top')}${opponentMarkup(3, 'left')}${opponentMarkup(1, 'right')}<div class="trick-zone">${trickMarkup}</div>${trickScoreMarkup}${roundFinished || matchOver ? `<button class="primary-button table-continue" type="button" data-action="continue">${matchOver ? 'New game' : 'Continue'} <span>↗</span></button>` : ''}<div class="trump-panel"><span class="panel-label">TRUMP</span><strong>${trumpLabel}</strong><span class="carry-dot"></span></div><div class="player-panel"><div class="player-name ${currentPlayer === 0 && trumpSuit && !roundFinished ? 'active' : ''}"><span class="avatar">${playerAvatarMarkup(38)}</span><strong>${escapeHtml(profile.name)}</strong></div><div class="hand">${sortedHand(hands[0] ?? []).map(cardMarkup).join('')}</div></div></section>
     <section class="action-panel"><div class="action-copy"><span class="status-dot"></span><div><strong>${matchOver ? message : roundFinished ? message : trumpSuit ? (currentPlayer === 0 ? 'Your turn' : message) : (trumpCaller === 0 ? 'Choose your trump' : `${playerName(trumpCaller)} chooses trump`)}</strong><span>${matchOver ? 'Start a new match when you are ready.' : roundFinished ? 'The round is complete.' : trumpSuit ? `${trick.length}/4 cards in trick · ${legalHint}` : partialDeal ? 'Only the first four cards are dealt.' : 'Preparing the hand.'}</span></div></div><div class="suit-picker">${(['clubs', 'diamonds', 'hearts', 'spades'] as Suit[]).map((suit) => `<button class="suit-button ${trumpSuit === suit ? 'active' : ''}${suit === 'hearts' || suit === 'diamonds' ? ' suit-red' : ''}" data-suit="${suit}" type="button" ${trumpSuit || trumpCaller !== 0 || matchOver || roundFinished ? 'disabled' : ''}>${suitIconSVG(suit, 20)}${suitNames[suit]}</button>`).join('')}</div>${showHintButton ? '<button class="hint-button" type="button" data-action="hint">💡 Hint</button>' : ''}</section><p class="footer-note">FIRST TO 10 TOKENS WINS <span>•</span> KAPOTHI AWARDS 2${stats.played > 0 ? ` <span>•</span> MATCHES WON ${stats.won}/${stats.played}` : ''}</p>${rulesOpen ? rulesMarkup() : ''}${rewardPopup ? rewardPopupMarkup() : ''}</main>`
   dealAnim = false
@@ -713,20 +708,18 @@ function openRules(): void {
 // Repaint the home screen's dynamic pieces (profile, wallet, daily bonus,
 // login) in place — clicking around the home screen never rebuilds it, so
 // nothing flashes or restarts its animations.
-function avatarShopMarkup(): string {
-  const tiers: { id: AvatarChoice['tier']; label: string; badge: string }[] = [
-    { id: 'free', label: 'Starter Collection', badge: 'FREE' },
-    { id: 'stylish', label: 'Stylish Collection', badge: '5 💎' },
-    { id: 'elite', label: 'Elite Cardists', badge: '10 💎' },
-    { id: 'legendary', label: 'Legendary Sovereigns', badge: '20 💎' }
-  ]
-  return tiers.map((tier) => {
-    const items = AVATAR_CHOICES.map((c, i) => ({ ...c, index: i })).filter((c) => c.tier === tier.id)
-    return `<div class="avatar-tier-group"><div class="tier-header"><h4 class="tier-title">${tier.label}</h4><span class="tier-tag tier-${tier.id}">${tier.badge}</span></div><div class="avatar-grid">${items.map((c) => {
-      const unlocked = isAvatarUnlocked(c.index)
-      const equipped = profile.avatar === c.index
-      const badge = equipped ? '<span class="avatar-badge equipped">✓ Equipped</span>' : unlocked ? '<span class="avatar-badge owned">Owned</span>' : `<span class="avatar-badge cost">💎 ${c.cost}</span>`
-      return `<button type="button" class="avatar-choice ${equipped ? 'selected' : ''} ${!unlocked ? 'locked' : ''} tier-${c.tier}" data-avatar="${c.index}" aria-label="${escapeHtml(c.name)}"><div class="avatar-icon-wrap">${createPlayerAvatarSVG(c.seed, c.style, 46, c.accessory, c.tier)}</div><span class="avatar-label">${escapeHtml(c.name)}</span>${badge}</button>`
+// The wardrobe: tiered avatar collections. Each cell stacks the face, the
+// name and its status (Owned / ✓ Equipped / 🔒 price) so labels never run
+// into each other; the equipped ring is drawn on the round face itself.
+function wardrobeMarkup(): string {
+  return AVATAR_TIERS.map((tier, tierIndex) => {
+    const cells = AVATAR_CHOICES.map((choice, i) => ({ choice, i })).filter(({ choice }) => choice.tier === tierIndex)
+    if (!cells.length) return ''
+    return `<div class="wardrobe-tier"><h4 class="tier-title">${tier.name}</h4><p class="tier-price">${tier.price === 0 ? 'FREE' : `${tier.price} 💎 EACH`}</p><div class="tier-grid">${cells.map(({ choice, i }) => {
+      const locked = !isAvatarUnlocked(i)
+      const selected = i === profile.avatar
+      const status = selected ? '✓ Equipped' : locked ? `🔒 ${avatarPrice(i)} 💎` : 'Owned'
+      return `<button type="button" class="avatar-choice${selected ? ' selected' : ''}${locked ? ' locked' : ''}" data-avatar="${i}" aria-label="${choice.label}"><span class="avatar-face">${createPlayerAvatarSVG(choice.seed, choice.style, 50)}</span><span class="avatar-name">${choice.label}</span><span class="avatar-status">${status}</span></button>`
     }).join('')}</div></div>`
   }).join('')
 }
@@ -760,10 +753,10 @@ function paintHomeUI(): void {
         ? `<button class="cg-login-button wide" type="button" data-action="cg-login">Login with CrazyGames</button><p class="account-note">Login to save your coins, gems and record to your account — on every device.</p>`
         : `<p class="account-note">Playing as guest — progress saves on this device.</p>`
   }
-  const profileGemChip = splash.querySelector('.profile-gems-bar .wallet-chip')
-  if (profileGemChip) profileGemChip.textContent = `💎 ${wallet.gems} Gems`
-  const pickerEl = splash.querySelector('.paint-avatar-picker')
-  if (pickerEl) pickerEl.innerHTML = avatarShopMarkup()
+  const wardrobeEl = splash.querySelector('.paint-wardrobe')
+  if (wardrobeEl) wardrobeEl.innerHTML = wardrobeMarkup()
+  const panelWalletEl = splash.querySelector('.paint-wallet-panel')
+  if (panelWalletEl) panelWalletEl.innerHTML = `<span class="wallet-chip">🪙 ${wallet.coins}</span><span class="wallet-chip gem">💎 ${wallet.gems}</span><button class="panel-wheel-button" type="button" data-action="wheel">🎡 Daily Wheel</button>`
   const unlockEl = splash.querySelector('.paint-unlock-note')
   if (unlockEl) unlockEl.textContent = unlockNote
   paintWheelUI()
@@ -772,7 +765,7 @@ function paintHomeUI(): void {
 function showSplash(showRules = false): void {
   const suits = (['spades', 'hearts', 'clubs', 'diamonds'] as Suit[]).map((suit, i) => `<span class="splash-suit s${i}">${suitIconSVG(suit, 40)}</span>`).join('')
   nameEditOpen = false
-  app.innerHTML = `<main class="splash">${suits}<div class="splash-top"><button class="profile-chip" type="button" data-action="profile"><span class="paint-avatar" data-size="40"></span><span class="paint-name chip-name"></span></button><div class="splash-top-right"><span class="paint-login"></span><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button></div></div><div class="splash-wallet paint-wallet"></div><div class="splash-inner"><img class="splash-logo" src="${logoUrl}" alt="Omi"><p class="splash-tag">The Sri Lankan trick-taking classic</p><button class="play-button" type="button" data-action="play">Play match</button><p class="entry-note paint-entry"></p><button class="splash-rules" type="button" data-action="how">How to play</button><p class="splash-foot">4 players · 2 teams · First to 10 tokens</p></div><div class="splash-bottom"><div class="paint-daily"></div><div class="paint-wheel"></div></div><div class="profile-backdrop" data-panel hidden><section class="profile-panel" role="dialog" aria-label="Your profile"><button class="panel-close" type="button" data-action="close-profile" aria-label="Close profile">✕</button><div class="panel-avatar paint-avatar" data-size="76"></div><div class="paint-name-block"></div><p class="profile-record paint-record"></p><div class="profile-gems-bar"><span class="wallet-chip gem">💎 ${wallet.gems} Gems</span><button class="wheel-shortcut-btn" type="button" data-action="wheel">🎡 Daily Wheel</button></div><p class="picker-label">Wardrobe · Unlock higher tiers with gems</p><div class="avatar-shop paint-avatar-picker">${avatarShopMarkup()}</div><p class="unlock-note paint-unlock-note"></p><div class="paint-account account-box"></div></section></div>${wheelPanelMarkup()}</main>`
+  app.innerHTML = `<main class="splash">${suits}<div class="splash-top"><button class="profile-chip" type="button" data-action="profile"><span class="paint-avatar" data-size="40"></span><span class="paint-name chip-name"></span></button><div class="splash-top-right"><span class="paint-login"></span><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button></div></div><div class="splash-wallet paint-wallet"></div><div class="splash-inner"><img class="splash-logo" src="${logoUrl}" alt="Omi"><p class="splash-tag">The Sri Lankan trick-taking classic</p><button class="play-button" type="button" data-action="play">Play match</button><p class="entry-note paint-entry"></p><button class="splash-rules" type="button" data-action="how">How to play</button><p class="splash-foot">4 players · 2 teams · First to 10 tokens</p></div><div class="splash-bottom"><div class="paint-daily"></div><div class="paint-wheel"></div></div><div class="profile-backdrop" data-panel hidden><section class="profile-panel" role="dialog" aria-label="Your profile"><button class="panel-close" type="button" data-action="close-profile" aria-label="Close profile">✕</button><div class="panel-avatar paint-avatar" data-size="76"></div><div class="paint-name-block"></div><p class="profile-record paint-record"></p><div class="panel-wallet paint-wallet-panel"></div><p class="picker-label">Wardrobe · Unlock higher tiers with gems</p><div class="wardrobe paint-wardrobe">${wardrobeMarkup()}</div><p class="unlock-note paint-unlock-note"></p><div class="paint-account account-box"></div></section></div>${wheelPanelMarkup()}</main>`
   const splash = app.querySelector('.splash')
   splash?.addEventListener('click', (event) => {
     const target = event.target as HTMLElement
@@ -783,27 +776,25 @@ function showSplash(showRules = false): void {
     const avatarButton = target.closest<HTMLButtonElement>('[data-avatar]')
     if (avatarButton) {
       const index = Number(avatarButton.dataset.avatar ?? 0)
-      const choice = AVATAR_CHOICES[index]
-      if (!choice) return
       if (!isAvatarUnlocked(index)) {
-        if (wallet.gems >= choice.cost) {
-          wallet.gems -= choice.cost
+        const price = avatarPrice(index)
+        if (wallet.gems >= price) {
+          wallet.gems -= price
           profile.unlocked = [...profile.unlocked, index]
           profile.avatar = index
           saveWallet()
           saveProfile()
-          unlockNote = `✨ Unlocked ${choice.name}! It is now equipped.`
-          soundManager.play('win')
-          celebrate()
+          unlockNote = 'Unlocked — that avatar is yours now!'
+          soundManager.play('score')
         } else {
-          unlockNote = `${choice.name} costs ${choice.cost} 💎 — you have ${wallet.gems} 💎. Spin the Daily Wheel to win more gems!`
+          unlockNote = `That avatar costs ${price} 💎 — you have ${wallet.gems} 💎. Spin the daily wheel to earn gems.`
           soundManager.play('click')
         }
         paintHomeUI()
         return
       }
       profile.avatar = index
-      unlockNote = `${choice.name} equipped!`
+      unlockNote = ''
       saveProfile()
       soundManager.play('click')
       paintHomeUI()
@@ -844,6 +835,8 @@ function showSplash(showRules = false): void {
       soundManager.play('click')
       void loginWithCrazyGames()
     } else if (action === 'wheel') {
+      const profilePanel = splash.querySelector<HTMLElement>('[data-panel]')
+      if (profilePanel) profilePanel.hidden = true
       const panel = splash.querySelector<HTMLElement>('[data-wheel-panel]')
       if (panel) panel.hidden = false
       wheelStatus = ''
