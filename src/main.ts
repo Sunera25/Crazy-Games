@@ -27,6 +27,9 @@ let tokens: Record<Team, number> = { northSouth: 0, eastWest: 0 }
 let message = 'Choose your trump suit'
 let roundNumber = 0
 let botTimer: number | null = null
+// Bumped whenever the flow resets (new match, next round, exit to home) so
+// timers scheduled by an abandoned state can never act on the new one.
+let flowToken = 0
 let carry = 0
 let matchOver = false
 let roundFinished = false
@@ -120,17 +123,25 @@ function isAvatarUnlocked(index: number): boolean {
   return index < FREE_AVATARS || profile.unlocked.includes(index)
 }
 
-interface Wallet { coins: number; gems: number; lastDaily: string; lastWheel: string }
+interface Wallet { coins: number; gems: number; lastDaily: string; lastWheel: string; wheelDay: string; wheelSpins: number }
 interface Profile { name: string; avatar: number; nameCustomized: boolean; unlocked: number[] }
 let wallet: Wallet = loadWallet()
 let profile: Profile = loadProfile()
 let nameEditOpen = false
 
 function loadWallet(): Wallet {
-  const empty: Wallet = { coins: 100, gems: 0, lastDaily: '', lastWheel: '' }
+  const empty: Wallet = { coins: 100, gems: 0, lastDaily: '', lastWheel: '', wheelDay: '', wheelSpins: 0 }
   try {
     const raw = storeGet('omi-wallet')
-    if (raw) return { ...empty, ...(JSON.parse(raw) as Partial<Wallet>) }
+    if (raw) {
+      const wallet = { ...empty, ...(JSON.parse(raw) as Partial<Wallet>) }
+      // Older saves tracked only the day of the single daily spin.
+      if (!wallet.wheelDay && wallet.lastWheel) {
+        wallet.wheelDay = wallet.lastWheel
+        wallet.wheelSpins = 1
+      }
+      return wallet
+    }
   } catch { /* fresh wallet */ }
   return empty
 }
@@ -154,7 +165,7 @@ function saveProfile(): void {
 
 function todayKey(): string {
   const d = new Date()
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
 }
 
 function dailyAvailable(): boolean {
@@ -184,7 +195,10 @@ function playerAvatarMarkup(size: number): string {
 }
 
 function recordLine(): string {
-  return stats.played > 0 ? `Won ${stats.won} of ${stats.played} matches${stats.best > 1 ? ` · Best streak ${stats.best}` : ''}${stats.kapothis > 0 ? ` · Kapothis ${stats.kapothis}` : ''}` : 'New player — welcome to the table!'
+  if (stats.played === 0) return 'New player — welcome to the table!'
+  const losses = stats.played - stats.won
+  const winRate = Math.round((stats.won / stats.played) * 100)
+  return `${stats.won}W – ${losses}L of ${stats.played} matches · Win rate ${winRate}%${stats.best > 1 ? ` · Best streak ${stats.best}` : ''}${stats.kapothis > 0 ? ` · Kapothis ${stats.kapothis}` : ''}`
 }
 
 // CrazyGames Data module hydration: when the platform module adopts
@@ -229,18 +243,66 @@ async function platformRewardedAd(): Promise<boolean> {
   return result !== 'failed'
 }
 
+// Out of coins: a match costs the entry fee, and a player who cannot pay
+// cannot play. The way back in is a rewarded ad worth 100 coins (the daily
+// bonus is the other refill). Shown over the home screen or over a match.
+function showBrokePanel(onRescued: () => void): void {
+  if (app.querySelector('.broke-backdrop')) return
+  soundManager.play('click')
+  const el = document.createElement('div')
+  el.className = 'profile-backdrop broke-backdrop'
+  el.innerHTML = `<section class="profile-panel broke-panel" role="dialog" aria-label="Out of coins"><button class="panel-close" type="button" data-broke="close" aria-label="Close">✕</button><div class="broke-icon" aria-hidden="true">🪙</div><h3 class="wheel-title">You're out of coins!</h3><p class="wheel-status broke-status">A match costs ${ENTRY_FEE} 🪙 and you have ${wallet.coins} 🪙. Watch a short ad to get <strong>100 🪙</strong> free.</p><button class="daily-button" type="button" data-broke="watch">▶ Watch ad · Get 100 🪙</button><p class="account-note">Tip: the daily bonus (+100 🪙) also refills you — claim it on the home screen.</p></section>`
+  app.appendChild(el)
+  el.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement
+    if (target === el || target.closest('[data-broke="close"]')) {
+      el.remove()
+      return
+    }
+    if (!target.closest('[data-broke="watch"]')) return
+    const status = el.querySelector('.broke-status')
+    const button = el.querySelector<HTMLButtonElement>('[data-broke="watch"]')
+    if (button) {
+      button.disabled = true
+      button.textContent = 'Loading ad…'
+    }
+    void platformRewardedAd().then((watched) => {
+      if (!watched) {
+        if (status) status.innerHTML = "The ad didn't finish — watch it fully to get your <strong>100 🪙</strong>."
+        if (button) {
+          button.disabled = false
+          button.textContent = '▶ Watch ad · Get 100 🪙'
+        }
+        return
+      }
+      wallet.coins += 100
+      saveWallet()
+      soundManager.play('score')
+      el.remove()
+      paintHomeUI()
+      onRescued()
+    })
+  })
+}
+
 // --- Daily gem wheel ------------------------------------------------------------
-// One spin per day, gated behind a rewarded ad. Gems come from here (and a
-// rare Kapothi) — match wins pay coins only.
+// The first spin of the day is free; after that, each extra spin costs a
+// rewarded ad, up to 5 more spins a day (6 total). Gems come from here (and
+// a rare Kapothi) — match wins pay coins only.
 const WHEEL_PRIZES = [1, 2, 1, 3, 1, 2, 5, 1]
 const WHEEL_WEIGHTS = [22, 18, 22, 10, 22, 14, 4, 18]
+const WHEEL_MAX_SPINS = 6
 let wheelRotation = 0
 let wheelSpinning = false
 let wheelStatus = ''
 let unlockNote = ''
 
+function wheelSpinsToday(): number {
+  return wallet.wheelDay === todayKey() ? wallet.wheelSpins : 0
+}
+
 function wheelAvailable(): boolean {
-  return wallet.lastWheel !== todayKey()
+  return wheelSpinsToday() < WHEEL_MAX_SPINS
 }
 
 function pickWheelPrize(): number {
@@ -276,16 +338,22 @@ function wheelPanelMarkup(): string {
 }
 
 function paintWheelUI(): void {
+  const spins = wheelSpinsToday()
+  const freeReady = spins === 0
   const status = app.querySelector('.paint-wheel-status')
-  if (status) status.textContent = wheelStatus || (wheelAvailable() ? 'One spin a day — watch a short ad, then spin for gems.' : 'You already spun today — come back tomorrow.')
+  if (status) status.textContent = wheelStatus || (freeReady ? 'Your FREE daily spin is ready — no ad needed!' : wheelAvailable() ? `Extra spin: watch an ad to spin again · ${WHEEL_MAX_SPINS - spins} left today` : "You've used all of today's spins — come back tomorrow.")
   const action = app.querySelector<HTMLButtonElement>('.paint-wheel-action')
   if (action) {
     action.disabled = wheelSpinning || !wheelAvailable()
-    action.textContent = wheelSpinning ? 'Spinning…' : wheelAvailable() ? '▶ Watch ad & spin' : 'Come back tomorrow'
+    action.textContent = wheelSpinning ? 'Spinning…' : freeReady ? '🎡 Spin — FREE' : wheelAvailable() ? '▶ Watch ad & spin' : 'Come back tomorrow'
   }
   const slot = app.querySelector('.paint-wheel')
   if (slot) {
-    slot.innerHTML = wheelAvailable() ? `<button class="wheel-button" type="button" data-action="wheel">🎡 Daily wheel · Win gems 💎</button>` : `<p class="daily-done">🎡 Wheel spun — back tomorrow</p>`
+    slot.innerHTML = freeReady
+      ? `<button class="wheel-button" type="button" data-action="wheel">🎡 Daily wheel · FREE spin!</button>`
+      : wheelAvailable()
+        ? `<button class="wheel-button" type="button" data-action="wheel">🎡 Daily wheel · Win gems 💎</button>`
+        : `<p class="daily-done">🎡 Wheel done — back tomorrow</p>`
   }
 }
 const app = document.querySelector<HTMLDivElement>('#app')!
@@ -348,7 +416,7 @@ function render(): void {
   animatedPlays = trick.length
   const trickScoreMarkup = `<div class="trick-score"><span><b>We</b><strong class="${scoreBump ? 'bump' : ''}">${tricksWon.northSouth}</strong></span><span><b>Them</b><strong class="${scoreBump ? 'bump' : ''}">${tricksWon.eastWest}</strong></span></div>`
   app.innerHTML = `<main class="game-shell">
-    <header class="topbar"><div class="brand-lockup"><img class="brand-logo" src="${logoUrl}" alt="Omi" width="64" height="64"><div><p class="eyebrow">TRICK-TAKER</p><h1>Omi</h1></div></div><div class="match-meta"><span class="round-label">ROUND ${String(roundNumber).padStart(2, '0')}</span><span class="match-score">You <strong>${tokens.northSouth}</strong> : <strong>${tokens.eastWest}</strong> Rivals</span></div><div class="topbar-actions"><span class="wallet-chip inline">🪙 ${wallet.coins} · 💎 ${wallet.gems}</span><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><button class="rules-button" type="button" data-action="rules" aria-expanded="${rulesOpen}">Rules</button><button class="new-game-button" type="button" data-action="new-game">New game</button></div></header>
+    <header class="topbar"><div class="brand-lockup"><img class="brand-logo" src="${logoUrl}" alt="Omi" width="64" height="64"><div><p class="eyebrow">TRICK-TAKER</p><h1>Omi</h1></div></div><div class="match-meta"><span class="round-label">ROUND ${String(roundNumber).padStart(2, '0')}</span><span class="match-score">You <strong>${tokens.northSouth}</strong> : <strong>${tokens.eastWest}</strong> Rivals</span></div><div class="topbar-actions"><span class="wallet-chip inline">🪙 ${wallet.coins} · 💎 ${wallet.gems}</span><button class="new-game-button" type="button" data-action="home">🏠 Home</button><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><button class="rules-button" type="button" data-action="rules" aria-expanded="${rulesOpen}">Rules</button><button class="new-game-button" type="button" data-action="new-game">New game</button></div></header>
     ${roundFinished || matchOver ? `<div class="result-banner ${matchOver ? 'match' : ''}"><strong>${message}</strong></div>` : ''}${coachMarkup}<section class="table" aria-label="Omi game table">${tableSVG()}<div class="table-glow"></div>${opponentMarkup(2, 'top')}${opponentMarkup(3, 'left')}${opponentMarkup(1, 'right')}<div class="trick-zone">${trickMarkup}</div>${trickScoreMarkup}${roundFinished || matchOver ? `<button class="primary-button table-continue" type="button" data-action="continue">${matchOver ? 'New game' : 'Continue'} <span>↗</span></button>` : ''}<div class="trump-panel"><span class="panel-label">TRUMP</span><strong>${trumpLabel}</strong><span class="carry-dot"></span></div><div class="player-panel"><div class="player-name ${currentPlayer === 0 && trumpSuit && !roundFinished ? 'active' : ''}"><span class="avatar">${playerAvatarMarkup(38)}</span><strong>${escapeHtml(profile.name)}</strong></div><div class="hand">${sortedHand(hands[0] ?? []).map(cardMarkup).join('')}</div></div></section>
     <section class="action-panel"><div class="action-copy"><span class="status-dot"></span><div><strong>${matchOver ? message : roundFinished ? message : trumpSuit ? (currentPlayer === 0 ? 'Your turn' : message) : (trumpCaller === 0 ? 'Choose your trump' : `${playerName(trumpCaller)} chooses trump`)}</strong><span>${matchOver ? 'Start a new match when you are ready.' : roundFinished ? 'The round is complete.' : trumpSuit ? `${trick.length}/4 cards in trick · ${legalHint}` : partialDeal ? 'Only the first four cards are dealt.' : 'Preparing the hand.'}</span></div></div><div class="suit-picker">${(['clubs', 'diamonds', 'hearts', 'spades'] as Suit[]).map((suit) => `<button class="suit-button ${trumpSuit === suit ? 'active' : ''}${suit === 'hearts' || suit === 'diamonds' ? ' suit-red' : ''}" data-suit="${suit}" type="button" ${trumpSuit || trumpCaller !== 0 || matchOver || roundFinished ? 'disabled' : ''}>${suitIconSVG(suit, 20)}${suitNames[suit]}</button>`).join('')}</div>${showHintButton ? '<button class="hint-button" type="button" data-action="hint">💡 Hint</button>' : ''}</section><p class="footer-note">FIRST TO 10 TOKENS WINS <span>•</span> KAPOTHI AWARDS 2${stats.played > 0 ? ` <span>•</span> MATCHES WON ${stats.won}/${stats.played}` : ''}</p>${rulesOpen ? rulesMarkup() : ''}${rewardPopup ? rewardPopupMarkup() : ''}</main>`
   dealAnim = false
@@ -356,7 +424,25 @@ function render(): void {
 
   app.querySelectorAll<HTMLButtonElement>('[data-suit]').forEach((button) => button.addEventListener('click', () => chooseHumanTrump(button.dataset.suit as Suit)))
   app.querySelectorAll<HTMLButtonElement>('[data-card-index]').forEach((button) => button.addEventListener('click', () => playHumanCard(Number(button.dataset.cardIndex))))
-  app.querySelectorAll<HTMLButtonElement>('[data-action="new-game"]').forEach((button) => button.addEventListener('click', newMatch))
+  app.querySelectorAll<HTMLButtonElement>('[data-action="new-game"]').forEach((button) => button.addEventListener('click', () => {
+    if (wallet.coins < ENTRY_FEE) {
+      showBrokePanel(() => newMatch())
+      return
+    }
+    newMatch()
+  }))
+  app.querySelectorAll<HTMLButtonElement>('[data-action="home"]').forEach((button) => button.addEventListener('click', () => {
+    flowToken++
+    if (botTimer !== null) {
+      window.clearTimeout(botTimer)
+      botTimer = null
+    }
+    rewardPopup = null
+    gameplayStop()
+    soundManager.stopMusic()
+    soundManager.play('click')
+    showSplash()
+  }))
   app.querySelectorAll<HTMLButtonElement>('[data-action="sound"]').forEach((button) => button.addEventListener('click', () => { soundManager.toggleMute(); render() }))
   app.querySelectorAll<HTMLButtonElement>('[data-action="rules"]').forEach((button) => button.addEventListener('click', () => { rulesOpen = true; render() }))
   app.querySelectorAll<HTMLElement>('[data-action="close-rules"]').forEach((element) => element.addEventListener('click', (event) => { if (event.target === element || element.hasAttribute('data-rules-panel')) { rulesOpen = false; render() } }))
@@ -368,7 +454,12 @@ function render(): void {
         startRound()
       }
     }
-    void platformAdBreak('midroll').then(proceed)
+    const go = () => { void platformAdBreak('midroll').then(proceed) }
+    if (matchOver && wallet.coins < ENTRY_FEE) {
+      showBrokePanel(go)
+      return
+    }
+    go()
   }))
   app.querySelectorAll<HTMLButtonElement>('[data-action="hint"]').forEach((button) => button.addEventListener('click', () => { rewardPopup = 'hint'; render() }))
   app.querySelectorAll<HTMLButtonElement>('[data-action="reward-watch"]').forEach((button) => button.addEventListener('click', () => { void watchRewardAd() }))
@@ -379,9 +470,11 @@ function render(): void {
 async function watchRewardAd(): Promise<void> {
   const kind = rewardPopup
   if (!kind) return
+  const token = flowToken
   rewardPopup = null
   render()
   const watched = await platformRewardedAd()
+  if (token !== flowToken) return // the player left the match mid-ad
   if (kind === 'hint') {
     if (watched && trumpSuit) {
       hintCard = chooseCard(hands[0], trick, trumpSuit, 0)
@@ -440,7 +533,9 @@ function playCard(player: number, handIndex: number): void {
 function scheduleBot(): void {
   if (currentPlayer === 0 || !trumpSuit) return
   if (botTimer !== null) window.clearTimeout(botTimer)
+  const token = flowToken
   botTimer = window.setTimeout(() => {
+    if (token !== flowToken) return
     const card = chooseCard(hands[currentPlayer], trick, trumpSuit!, currentPlayer)
     const index = hands[currentPlayer].findIndex((candidate) => candidate.suit === card.suit && candidate.rank === card.rank)
     playCard(currentPlayer, index)
@@ -460,7 +555,9 @@ function finishTrick(): void {
   trickClosing = true
   render()
   window.setTimeout(() => app.querySelector('.trick-zone')?.classList.add(`collect-${winner.player}`), 520)
+  const trickToken = flowToken
   window.setTimeout(() => {
+    if (trickToken !== flowToken) return
     trickClosing = false
     if (hands[0].length === 0) {
       finishRound()
@@ -538,6 +635,7 @@ function finishRound(): void {
 
 function startRound(): void {
   if (botTimer !== null) window.clearTimeout(botTimer)
+  flowToken++
   soundManager.play('shuffle')
   const deck = shuffleDeck(createDeck())
   partialDeal = dealFirstBatch(deck)
@@ -568,7 +666,9 @@ function newMatch(): void {
 }
 
 function scheduleBotTrump(): void {
+  const token = flowToken
   window.setTimeout(() => {
+    if (token !== flowToken) return
     if (trumpSuit || !partialDeal) return
     trumpSuit = chooseTrump(partialDeal.hands[trumpCaller])
     hands = dealSecondBatch(partialDeal)
@@ -608,7 +708,7 @@ function paintHomeUI(): void {
   const dailyEl = splash.querySelector('.paint-daily')
   if (dailyEl) dailyEl.innerHTML = dailyAvailable() ? `<button class="daily-button" type="button" data-action="daily">🎁 Daily bonus · Claim +${DAILY_COINS} 🪙</button>` : `<p class="daily-done">🎁 Daily bonus claimed — come back tomorrow</p>`
   const entryEl = splash.querySelector('.paint-entry')
-  if (entryEl) entryEl.textContent = wallet.coins >= ENTRY_FEE ? `Entry ${ENTRY_FEE} 🪙 · Win the match +${WIN_COINS} 🪙` : `Not enough coins — this match is free · Win +${WIN_COINS} 🪙`
+  if (entryEl) entryEl.textContent = wallet.coins >= ENTRY_FEE ? `Entry ${ENTRY_FEE} 🪙 · Win the match +${WIN_COINS} 🪙` : `You need ${ENTRY_FEE} 🪙 to play — watch an ad for +100 🪙, or claim the daily bonus`
   const loginEl = splash.querySelector('.paint-login')
   if (loginEl) loginEl.innerHTML = cgAccount.available && !cgAccount.username ? `<button class="cg-login-button" type="button" data-action="cg-login">Login with CrazyGames</button>` : ''
   const recordEl = splash.querySelector('.paint-record')
@@ -640,7 +740,7 @@ function paintHomeUI(): void {
 function showSplash(showRules = false): void {
   const suits = (['spades', 'hearts', 'clubs', 'diamonds'] as Suit[]).map((suit, i) => `<span class="splash-suit s${i}">${suitIconSVG(suit, 40)}</span>`).join('')
   nameEditOpen = false
-  app.innerHTML = `<main class="splash">${suits}<div class="splash-top"><button class="profile-chip" type="button" data-action="profile"><span class="paint-avatar" data-size="40"></span><span class="paint-name chip-name"></span></button><div class="splash-top-right"><span class="paint-login"></span><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button></div></div><div class="splash-inner"><img class="splash-logo" src="${logoUrl}" alt="Omi"><p class="splash-tag">The Sri Lankan trick-taking classic</p><div class="wallet-row paint-wallet"></div><div class="paint-daily"></div><div class="paint-wheel"></div><button class="play-button" type="button" data-action="play">Play match</button><p class="entry-note paint-entry"></p><button class="splash-rules" type="button" data-action="how">How to play</button><p class="splash-foot">4 players · 2 teams · First to 10 tokens</p></div><div class="profile-backdrop" data-panel hidden><section class="profile-panel" role="dialog" aria-label="Your profile"><button class="panel-close" type="button" data-action="close-profile" aria-label="Close profile">✕</button><div class="panel-avatar paint-avatar" data-size="76"></div><div class="paint-name-block"></div><p class="profile-record paint-record"></p><p class="picker-label">Choose your avatar · 🔒 = 5 💎</p><div class="avatar-picker" role="group" aria-label="Choose your avatar">${AVATAR_CHOICES.map((c, i) => `<button type="button" class="avatar-choice" data-avatar="${i}" aria-label="Avatar ${i + 1}">${createPlayerAvatarSVG(c.seed, c.style, 50)}</button>`).join('')}</div><p class="unlock-note paint-unlock-note"></p><div class="paint-account account-box"></div></section></div>${wheelPanelMarkup()}</main>`
+  app.innerHTML = `<main class="splash">${suits}<div class="splash-top"><button class="profile-chip" type="button" data-action="profile"><span class="paint-avatar" data-size="40"></span><span class="paint-name chip-name"></span></button><div class="splash-top-right"><span class="paint-login"></span><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button></div></div><div class="splash-wallet paint-wallet"></div><div class="splash-inner"><img class="splash-logo" src="${logoUrl}" alt="Omi"><p class="splash-tag">The Sri Lankan trick-taking classic</p><button class="play-button" type="button" data-action="play">Play match</button><p class="entry-note paint-entry"></p><button class="splash-rules" type="button" data-action="how">How to play</button><p class="splash-foot">4 players · 2 teams · First to 10 tokens</p></div><div class="splash-bottom"><div class="paint-daily"></div><div class="paint-wheel"></div></div><div class="profile-backdrop" data-panel hidden><section class="profile-panel" role="dialog" aria-label="Your profile"><button class="panel-close" type="button" data-action="close-profile" aria-label="Close profile">✕</button><div class="panel-avatar paint-avatar" data-size="76"></div><div class="paint-name-block"></div><p class="profile-record paint-record"></p><p class="picker-label">Choose your avatar · 🔒 = 5 💎</p><div class="avatar-picker" role="group" aria-label="Choose your avatar">${AVATAR_CHOICES.map((c, i) => `<button type="button" class="avatar-choice" data-avatar="${i}" aria-label="Avatar ${i + 1}">${createPlayerAvatarSVG(c.seed, c.style, 50)}</button>`).join('')}</div><p class="unlock-note paint-unlock-note"></p><div class="paint-account account-box"></div></section></div>${wheelPanelMarkup()}</main>`
   const splash = app.querySelector('.splash')
   splash?.addEventListener('click', (event) => {
     const target = event.target as HTMLElement
@@ -678,12 +778,19 @@ function showSplash(showRules = false): void {
     if (!el) return
     const action = el.dataset.action
     if (action === 'play') {
-      soundManager.play('click')
-      soundManager.startMusic()
-      void platformAdBreak('preroll').then(() => {
-        splash.classList.add('leaving')
-        window.setTimeout(newMatch, 450)
-      })
+      const startPlay = () => {
+        soundManager.play('click')
+        soundManager.startMusic()
+        void platformAdBreak('preroll').then(() => {
+          splash.classList.add('leaving')
+          window.setTimeout(newMatch, 450)
+        })
+      }
+      if (wallet.coins < ENTRY_FEE) {
+        showBrokePanel(startPlay)
+        return
+      }
+      startPlay()
     } else if (action === 'profile') {
       const panel = splash.querySelector<HTMLElement>('[data-panel]')
       if (panel) panel.hidden = false
@@ -712,16 +819,9 @@ function showSplash(showRules = false): void {
       if (panel) panel.hidden = true
     } else if (action === 'wheel-spin') {
       if (wheelSpinning || !wheelAvailable()) return
-      void (async () => {
-        wheelStatus = 'Loading your ad…'
-        paintWheelUI()
-        const watched = await platformRewardedAd()
-        if (!watched) {
-          wheelStatus = "The ad didn't finish — watch it fully to spin."
-          paintWheelUI()
-          return
-        }
-        wallet.lastWheel = todayKey()
+      const doSpin = () => {
+        wallet.wheelDay = todayKey()
+        wallet.wheelSpins = wheelSpinsToday() + 1
         saveWallet()
         const prizeIndex = pickWheelPrize()
         const prize = WHEEL_PRIZES[prizeIndex]
@@ -746,7 +846,21 @@ function showSplash(showRules = false): void {
           celebrate()
           paintHomeUI()
         }, 5200)
-      })()
+      }
+      if (wheelSpinsToday() === 0) {
+        doSpin()
+        return
+      }
+      wheelStatus = 'Loading your ad…'
+      paintWheelUI()
+      void platformRewardedAd().then((watched) => {
+        if (!watched) {
+          wheelStatus = "The ad didn't finish — watch it fully to spin."
+          paintWheelUI()
+          return
+        }
+        doSpin()
+      })
     } else if (action === 'edit-name') {
       nameEditOpen = true
       paintHomeUI()
