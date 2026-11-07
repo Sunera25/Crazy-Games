@@ -6,6 +6,7 @@ import { isLegalCard, scoreRound, trickWinner, type PlayedCard, type Team, teamF
 import { gameplayStart, gameplayStop, initializeCrazyGames, loadingStart, loadingStop } from './platform/crazygames.ts'
 import { gdAdBreak, gdAdsEnabled, gdRewardedAd, initializeGameDistribution } from './platform/gamedistribution.ts'
 import { soundManager } from './utils/sounds.ts'
+import { storeGet, storeSet } from './utils/storage.ts'
 import { createParticleEffectSVG, createPlayerAvatarSVG, getAvatarColor } from './utils/index.ts'
 import { cardBackFanSVG, cardFaceSVG, suitIconSVG, tableSVG } from './utils/art.ts'
 import { logoUrl } from './assets/omi-logo.ts'
@@ -50,7 +51,7 @@ let coachPending = loadCoachPending()
 function loadStats(): PlayerStats {
   const empty: PlayerStats = { played: 0, won: 0, streak: 0, best: 0, kapothis: 0 }
   try {
-    const raw = window.localStorage.getItem('omi-stats')
+    const raw = storeGet('omi-stats')
     if (raw) return { ...empty, ...(JSON.parse(raw) as Partial<PlayerStats>) }
   } catch { /* fresh stats */ }
   return empty
@@ -58,13 +59,13 @@ function loadStats(): PlayerStats {
 
 function saveStats(): void {
   try {
-    window.localStorage.setItem('omi-stats', JSON.stringify(stats))
+    storeSet('omi-stats', JSON.stringify(stats))
   } catch { /* session only */ }
 }
 
 function loadCoachPending(): boolean {
   try {
-    return window.localStorage.getItem('omi-coach-done') !== '1'
+    return storeGet('omi-coach-done') !== '1'
   } catch {
     return true
   }
@@ -73,7 +74,7 @@ function loadCoachPending(): boolean {
 function completeCoach(): void {
   coachPending = false
   try {
-    window.localStorage.setItem('omi-coach-done', '1')
+    storeSet('omi-coach-done', '1')
   } catch { /* session only */ }
 }
 
@@ -85,6 +86,99 @@ function celebrate(): void {
   document.body.appendChild(layer)
   window.setTimeout(() => layer.remove(), 2600)
 }
+
+// --- Wallet & profile -------------------------------------------------------
+// Coins and gems are earned only by playing (daily bonus, match rewards,
+// Kapothi bonus) — CrazyGames in-game purchases are invite-only, so nothing
+// here is sold for real money and the game stays fully playable for free:
+// a player who cannot afford the entry fee simply plays the match free.
+const ENTRY_FEE = 25
+const WIN_COINS = 60
+const LOSE_COINS = 10
+const WIN_GEMS = 2
+const DAILY_COINS = 100
+
+const AVATAR_CHOICES = [
+  { seed: 'You', style: 'saffron' },
+  { seed: 'Amaya', style: 'rose' },
+  { seed: 'Kasun', style: 'sky' },
+  { seed: 'Tharushi', style: 'lavender' },
+  { seed: 'Nimal', style: 'mint' },
+  { seed: 'Dilshan', style: 'coral' }
+]
+
+interface Wallet { coins: number; gems: number; lastDaily: string }
+interface Profile { name: string; avatar: number; nameCustomized: boolean }
+let wallet: Wallet = loadWallet()
+let profile: Profile = loadProfile()
+let avatarPickerOpen = false
+let nameEditOpen = false
+
+function loadWallet(): Wallet {
+  const empty: Wallet = { coins: 100, gems: 0, lastDaily: '' }
+  try {
+    const raw = storeGet('omi-wallet')
+    if (raw) return { ...empty, ...(JSON.parse(raw) as Partial<Wallet>) }
+  } catch { /* fresh wallet */ }
+  return empty
+}
+
+function saveWallet(): void {
+  storeSet('omi-wallet', JSON.stringify(wallet))
+}
+
+function loadProfile(): Profile {
+  const empty: Profile = { name: 'Player', avatar: 0, nameCustomized: false }
+  try {
+    const raw = storeGet('omi-profile')
+    if (raw) return { ...empty, ...(JSON.parse(raw) as Partial<Profile>) }
+  } catch { /* fresh profile */ }
+  return empty
+}
+
+function saveProfile(): void {
+  storeSet('omi-profile', JSON.stringify(profile))
+}
+
+function todayKey(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+}
+
+function dailyAvailable(): boolean {
+  return wallet.lastDaily !== todayKey()
+}
+
+function myAvatar(): { seed: string; style: string } {
+  return AVATAR_CHOICES[profile.avatar] ?? AVATAR_CHOICES[0]
+}
+
+function escapeHtml(value: string): string {
+  const entities: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
+  return value.replace(/[&<>"']/g, (ch) => entities[ch] ?? ch)
+}
+
+// CrazyGames Data module hydration: when the platform module adopts
+// account-backed progress, reload the in-memory state and refresh the home
+// screen if it is showing.
+window.addEventListener('omi:cloud-hydrated', () => {
+  stats = loadStats()
+  wallet = loadWallet()
+  profile = loadProfile()
+  coachPending = loadCoachPending()
+  if (app.querySelector('.splash')) showSplash(rulesOpen)
+})
+
+// A signed-in CrazyGames player's username becomes their profile name,
+// unless they have already chosen a name themselves.
+window.addEventListener('omi:cg-user', (event) => {
+  const username = (event as CustomEvent<string>).detail
+  if (username && !profile.nameCustomized) {
+    profile = { ...profile, name: username.slice(0, 16) }
+    saveProfile()
+    if (app.querySelector('.splash')) showSplash(rulesOpen)
+  }
+})
 const app = document.querySelector<HTMLDivElement>('#app')!
 
 const botNamePool = ['Nimal', 'Amaya', 'Kasun', 'Dilshan', 'Sahan', 'Tharushi', 'Isuru', 'Chathura']
@@ -145,8 +239,8 @@ function render(): void {
   animatedPlays = trick.length
   const trickScoreMarkup = `<div class="trick-score"><span><b>You + ${playerName(2)}</b><strong class="${scoreBump ? 'bump' : ''}">${tricksWon.northSouth}</strong></span><span><b>${playerName(1)} + ${playerName(3)}</b><strong class="${scoreBump ? 'bump' : ''}">${tricksWon.eastWest}</strong></span></div>`
   app.innerHTML = `<main class="game-shell">
-    <header class="topbar"><div class="brand-lockup"><img class="brand-logo" src="${logoUrl}" alt="Omi" width="64" height="64"><div><p class="eyebrow">TRICK-TAKER</p><h1>Omi</h1></div></div><div class="match-meta"><span class="round-label">ROUND ${String(roundNumber).padStart(2, '0')}</span><span class="match-score">You <strong>${tokens.northSouth}</strong> : <strong>${tokens.eastWest}</strong> Rivals</span></div><div class="topbar-actions"><div class="round-label">TRUMP CALLER · ${playerName(trumpCaller).toUpperCase()}</div><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><button class="rules-button" type="button" data-action="rules" aria-expanded="${rulesOpen}">Rules</button><button class="new-game-button" type="button" data-action="new-game">New game</button></div></header>
-    ${roundFinished || matchOver ? `<div class="result-banner ${matchOver ? 'match' : ''}"><strong>${message}</strong></div>` : ''}${coachMarkup}<section class="table" aria-label="Omi game table">${tableSVG()}<div class="table-glow"></div>${opponentMarkup(2, 'top')}${opponentMarkup(3, 'left')}${opponentMarkup(1, 'right')}<div class="trick-zone">${trickMarkup}</div>${trickScoreMarkup}${roundFinished || matchOver ? `<button class="primary-button table-continue" type="button" data-action="continue">${matchOver ? 'New game' : 'Continue'} <span>↗</span></button>` : ''}<div class="trump-panel"><span class="panel-label">TRUMP</span><strong>${trumpLabel}</strong><span class="carry-dot"></span></div><div class="player-panel"><div class="player-name ${currentPlayer === 0 && trumpSuit && !roundFinished ? 'active' : ''}"><span class="avatar">${createPlayerAvatarSVG('You', getAvatarColor('You'), 38)}</span><strong>You</strong></div><div class="hand">${sortedHand(hands[0] ?? []).map(cardMarkup).join('')}</div></div></section>
+    <header class="topbar"><div class="brand-lockup"><img class="brand-logo" src="${logoUrl}" alt="Omi" width="64" height="64"><div><p class="eyebrow">TRICK-TAKER</p><h1>Omi</h1></div></div><div class="match-meta"><span class="round-label">ROUND ${String(roundNumber).padStart(2, '0')}</span><span class="match-score">You <strong>${tokens.northSouth}</strong> : <strong>${tokens.eastWest}</strong> Rivals</span></div><div class="topbar-actions"><span class="wallet-chip inline">🪙 ${wallet.coins} · 💎 ${wallet.gems}</span><div class="round-label">TRUMP CALLER · ${playerName(trumpCaller).toUpperCase()}</div><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><button class="rules-button" type="button" data-action="rules" aria-expanded="${rulesOpen}">Rules</button><button class="new-game-button" type="button" data-action="new-game">New game</button></div></header>
+    ${roundFinished || matchOver ? `<div class="result-banner ${matchOver ? 'match' : ''}"><strong>${message}</strong></div>` : ''}${coachMarkup}<section class="table" aria-label="Omi game table">${tableSVG()}<div class="table-glow"></div>${opponentMarkup(2, 'top')}${opponentMarkup(3, 'left')}${opponentMarkup(1, 'right')}<div class="trick-zone">${trickMarkup}</div>${trickScoreMarkup}${roundFinished || matchOver ? `<button class="primary-button table-continue" type="button" data-action="continue">${matchOver ? 'New game' : 'Continue'} <span>↗</span></button>` : ''}<div class="trump-panel"><span class="panel-label">TRUMP</span><strong>${trumpLabel}</strong><span class="carry-dot"></span></div><div class="player-panel"><div class="player-name ${currentPlayer === 0 && trumpSuit && !roundFinished ? 'active' : ''}"><span class="avatar">${createPlayerAvatarSVG(myAvatar().seed, myAvatar().style, 38)}</span><strong>${escapeHtml(profile.name)}</strong></div><div class="hand">${sortedHand(hands[0] ?? []).map(cardMarkup).join('')}</div></div></section>
     <section class="action-panel"><div class="action-copy"><span class="status-dot"></span><div><strong>${matchOver ? message : roundFinished ? message : trumpSuit ? (currentPlayer === 0 ? 'Your turn' : message) : (trumpCaller === 0 ? 'Choose your trump' : `${playerName(trumpCaller)} chooses trump`)}</strong><span>${matchOver ? 'Start a new match when you are ready.' : roundFinished ? 'The round is complete.' : trumpSuit ? `${trick.length}/4 cards in trick · ${legalHint}` : partialDeal ? 'Only the first four cards are dealt.' : 'Preparing the hand.'}</span></div></div><div class="suit-picker">${(['clubs', 'diamonds', 'hearts', 'spades'] as Suit[]).map((suit) => `<button class="suit-button ${trumpSuit === suit ? 'active' : ''}${suit === 'hearts' || suit === 'diamonds' ? ' suit-red' : ''}" data-suit="${suit}" type="button" ${trumpSuit || trumpCaller !== 0 || matchOver || roundFinished ? 'disabled' : ''}>${suitIconSVG(suit, 20)}${suitNames[suit]}</button>`).join('')}</div>${showHintButton ? '<button class="hint-button" type="button" data-action="hint">💡 Hint</button>' : ''}</section><p class="footer-note">FIRST TO 10 TOKENS WINS <span>•</span> KAPOTHI AWARDS 2${stats.played > 0 ? ` <span>•</span> MATCHES WON ${stats.won}/${stats.played}` : ''}</p>${rulesOpen ? rulesMarkup() : ''}${rewardPopup ? rewardPopupMarkup() : ''}</main>`
   dealAnim = false
   scoreBump = false
@@ -279,14 +373,19 @@ function finishRound(): void {
   carry = result.carry
   const tokensBefore = tokens.northSouth
   if (result.winner) tokens[result.winner] += result.tokens
+  let kapothiGem = false
   if (result.isKapothi && result.winner === 'northSouth') {
     stats.kapothis += 1
     saveStats()
+    wallet.gems += 1
+    saveWallet()
+    kapothiGem = true
   }
   const winnerLabel = result.winner === 'northSouth' ? 'Your team' : 'The rival team'
   message = result.winner ? `${winnerLabel} won ${result.tokens} token${result.tokens === 1 ? '' : 's'}${result.isKapothi ? ' · Kapothi!' : ''}` : '4–4 tie · one token carries over'
   if (result.winner === 'northSouth' && tokensBefore < 5 && tokens.northSouth >= 5) message += ' · Halfway to the match!'
   if (result.winner === 'northSouth' && tokensBefore < 9 && tokens.northSouth >= 9) message += ' · Match point!'
+  if (kapothiGem) message += ' · +1 💎 Kapothi bonus'
 
   if (result.winner === 'northSouth') {
     soundManager.playSequence(['score', 'win'], 0.15)
@@ -307,10 +406,16 @@ function finishRound(): void {
       stats.won += 1
       stats.streak += 1
       stats.best = Math.max(stats.best, stats.streak)
+      wallet.coins += WIN_COINS
+      wallet.gems += WIN_GEMS
+      message += ` · +${WIN_COINS} 🪙 +${WIN_GEMS} 💎`
     } else {
       stats.streak = 0
+      wallet.coins += LOSE_COINS
+      message += ` · +${LOSE_COINS} 🪙`
     }
     saveStats()
+    saveWallet()
   }
   if ((result.isKapothi && result.winner === 'northSouth') || (matchOver && tokens.northSouth >= 10)) celebrate()
   // GameDistribution rewarded offer: once per match, when the rivals score,
@@ -343,6 +448,8 @@ function startRound(): void {
 function newMatch(): void {
   gameplayStart()
   soundManager.startMusic()
+  if (wallet.coins >= ENTRY_FEE) wallet.coins -= ENTRY_FEE
+  saveWallet()
   tokens = { northSouth: 0, eastWest: 0 }
   carry = 0
   secondChanceUsed = false
@@ -376,7 +483,14 @@ if (import.meta.env.MODE === 'gamedistribution') {
 
 function showSplash(showRules = false): void {
   const suits = (['spades', 'hearts', 'clubs', 'diamonds'] as Suit[]).map((suit, i) => `<span class="splash-suit s${i}">${suitIconSVG(suit, 40)}</span>`).join('')
-  app.innerHTML = `<main class="splash">${suits}<button class="new-game-button splash-sound" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><div class="splash-inner"><img class="splash-logo" src="${logoUrl}" alt="Omi"><p class="splash-tag">The Sri Lankan trick-taking classic</p>${stats.played > 0 ? `<p class="splash-stats">Matches won ${stats.won} of ${stats.played}${stats.best > 1 ? ` · Best streak ${stats.best}` : ''}${stats.kapothis > 0 ? ` · Kapothis ${stats.kapothis}` : ''}</p>` : ''}<button class="play-button" type="button" data-action="play">Play</button><button class="splash-rules" type="button" data-action="how">How to play</button><p class="splash-foot">4 players · 2 teams · First to 10 tokens</p></div>${showRules ? rulesMarkup() : ''}</main>`
+  const choice = myAvatar()
+  const recordLine = stats.played > 0 ? `Won ${stats.won} of ${stats.played} matches${stats.best > 1 ? ` · Best streak ${stats.best}` : ''}${stats.kapothis > 0 ? ` · Kapothis ${stats.kapothis}` : ''}` : 'New player — welcome to the table!'
+  const profileCard = `<section class="profile-card"><button class="profile-avatar" type="button" data-action="avatars" title="Choose your avatar">${createPlayerAvatarSVG(choice.seed, choice.style, 54)}</button><div class="profile-main"><div class="profile-name-row"><strong>${escapeHtml(profile.name)}</strong><button class="icon-button" type="button" data-action="edit-name" aria-label="Edit your name">✎</button></div><p class="profile-record">${recordLine}</p></div><div class="wallet"><span class="wallet-chip">🪙 ${wallet.coins}</span><span class="wallet-chip gem">💎 ${wallet.gems}</span></div></section>`
+  const picker = avatarPickerOpen ? `<div class="avatar-picker" role="group" aria-label="Choose your avatar">${AVATAR_CHOICES.map((c, i) => `<button type="button" class="avatar-choice ${i === profile.avatar ? 'selected' : ''}" data-avatar="${i}" aria-label="Avatar ${i + 1}">${createPlayerAvatarSVG(c.seed, c.style, 50)}</button>`).join('')}</div>` : ''
+  const nameEditor = nameEditOpen ? `<div class="name-editor"><input id="profile-name-input" type="text" maxlength="16" value="${escapeHtml(profile.name)}" aria-label="Your name"><button type="button" data-action="save-name">Save</button></div>` : ''
+  const daily = dailyAvailable() ? `<button class="daily-button" type="button" data-action="daily">🎁 Daily bonus · Claim +${DAILY_COINS} 🪙</button>` : `<p class="daily-done">🎁 Daily bonus claimed — come back tomorrow</p>`
+  const entryNote = wallet.coins >= ENTRY_FEE ? `Entry ${ENTRY_FEE} 🪙 · Win the match +${WIN_COINS} 🪙 +${WIN_GEMS} 💎` : `Not enough coins — this match is free · Win +${WIN_COINS} 🪙 +${WIN_GEMS} 💎`
+  app.innerHTML = `<main class="splash">${suits}<button class="new-game-button splash-sound" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><div class="splash-inner"><img class="splash-logo" src="${logoUrl}" alt="Omi"><p class="splash-tag">The Sri Lankan trick-taking classic</p>${profileCard}${picker}${nameEditor}${daily}<button class="play-button" type="button" data-action="play">Play match</button><p class="entry-note">${entryNote}</p><button class="splash-rules" type="button" data-action="how">How to play</button><p class="splash-foot">4 players · 2 teams · First to 10 tokens</p></div>${showRules ? rulesMarkup() : ''}</main>`
   app.querySelector('[data-action="play"]')?.addEventListener('click', () => {
     soundManager.play('click')
     soundManager.startMusic()
@@ -386,6 +500,33 @@ function showSplash(showRules = false): void {
     })
   })
   app.querySelector('[data-action="how"]')?.addEventListener('click', () => showSplash(true))
+  app.querySelector('[data-action="daily"]')?.addEventListener('click', () => {
+    if (!dailyAvailable()) return
+    wallet.coins += DAILY_COINS
+    wallet.lastDaily = todayKey()
+    saveWallet()
+    soundManager.play('score')
+    showSplash(showRules)
+  })
+  app.querySelector('[data-action="avatars"]')?.addEventListener('click', () => { avatarPickerOpen = !avatarPickerOpen; soundManager.play('click'); showSplash(showRules) })
+  app.querySelectorAll<HTMLButtonElement>('[data-avatar]').forEach((button) => button.addEventListener('click', () => {
+    profile.avatar = Number(button.dataset.avatar ?? 0)
+    saveProfile()
+    avatarPickerOpen = false
+    soundManager.play('click')
+    showSplash(showRules)
+  }))
+  app.querySelector('[data-action="edit-name"]')?.addEventListener('click', () => { nameEditOpen = true; showSplash(showRules); app.querySelector<HTMLInputElement>('#profile-name-input')?.focus() })
+  app.querySelector('[data-action="save-name"]')?.addEventListener('click', () => {
+    const input = app.querySelector<HTMLInputElement>('#profile-name-input')
+    const value = (input?.value ?? '').trim().slice(0, 16)
+    profile.name = value || 'Player'
+    profile.nameCustomized = true
+    saveProfile()
+    nameEditOpen = false
+    soundManager.play('click')
+    showSplash(showRules)
+  })
   app.querySelector('[data-action="sound"]')?.addEventListener('click', () => { soundManager.toggleMute(); showSplash(showRules) })
   app.querySelectorAll<HTMLElement>('[data-action="close-rules"]').forEach((element) => element.addEventListener('click', (event) => { if (event.target === element || element.hasAttribute('data-rules-panel')) showSplash(false) }))
 }

@@ -1,4 +1,5 @@
 import { soundManager } from '../utils/sounds'
+import { registerCloudData } from '../utils/storage'
 
 type CrazyGamesSettings = {
   muteAudio?: boolean
@@ -13,6 +14,15 @@ type CrazyGamesSdk = {
     gameplayStop: () => void
     settings?: CrazyGamesSettings
     addSettingsChangeListener?: (listener: () => void) => void
+  }
+  data?: {
+    getItem: (key: string) => string | null
+    setItem: (key: string, value: string) => void
+    removeItem?: (key: string) => void
+  }
+  user?: {
+    isUserAccountAvailable: (callback: (available: boolean) => void) => void
+    getUser: (callback: (user: { username?: string } | null) => void) => void
   }
 }
 
@@ -44,6 +54,29 @@ export async function initializeCrazyGames(): Promise<void> {
       candidate.game.addSettingsChangeListener?.(syncSettings)
     } catch {
       // Older SDK without settings listeners - the initial sync still applies.
+    }
+    // Progress save: mirror the player's progress to the CrazyGames Data
+    // module so it is backed up to their account and synced across devices.
+    if (candidate.data) {
+      registerCloudData(candidate.data, () => window.dispatchEvent(new CustomEvent('omi:cloud-hydrated')))
+    }
+    // Account integration: a signed-in player's CrazyGames username becomes
+    // their in-game name (the game module applies it only if they have not
+    // already chosen a name themselves).
+    try {
+      candidate.user?.isUserAccountAvailable((available) => {
+        if (!available) return
+        try {
+          candidate.user?.getUser((user) => {
+            const username = user?.username
+            if (username) window.dispatchEvent(new CustomEvent('omi:cg-user', { detail: username }))
+          })
+        } catch {
+          // User module unavailable - the local profile still works.
+        }
+      })
+    } catch {
+      // User module unavailable - the local profile still works.
     }
     // If the player pressed Play before init finished, deliver the
     // gameplay start that was requested earlier.

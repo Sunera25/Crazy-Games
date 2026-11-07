@@ -418,3 +418,47 @@ button:focus-visible { outline: 2px solid #f0c46a; outline-offset: 2px; }
 .splash-stats { margin: -4px 0 4px; color: #e8ba63; font: 600 12px 'DM Mono', monospace; letter-spacing: .14em; text-transform: uppercase; animation: fadeUp .6s .55s ease both; }
 .confetti-layer { position: fixed; inset: 0; z-index: 45; display: grid; justify-items: center; align-items: start; pointer-events: none; overflow: hidden; }
 .confetti-layer svg { width: min(680px, 100vw); height: auto; }
+
+/* ===== Home screen: profile, wallet, daily bonus ===== */
+.profile-card { display: flex; align-items: center; gap: 14px; width: min(540px, 94vw); padding: 12px 16px; border: 1px solid #d4af3755; border-radius: 16px; background: #06231bd9; box-shadow: 0 14px 34px #0009; text-align: left; animation: fadeUp .6s .5s ease both; }
+.profile-avatar { flex: none; padding: 0; border: 2px solid #d4af37aa; border-radius: 50%; background: none; cursor: pointer; line-height: 0; transition: transform .15s; }
+.profile-avatar:hover { transform: scale(1.06); }
+.profile-avatar svg { border-radius: 50%; }
+.profile-avatar .avatar-svg { width: 54px; height: 54px; }
+.profile-main { flex: 1 1 auto; min-width: 0; }
+.profile-name-row { display: flex; align-items: center; gap: 8px; }
+.profile-name-row strong { color: var(--cream, #fdf6dd); font: 400 19px 'Fredoka', sans-serif; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.icon-button { flex: none; width: 26px; height: 26px; padding: 0; display: inline-grid; place-items: center; border: 1px solid #d4af3755; border-radius: 50%; color: #f3dc82; background: transparent; font-size: 13px; line-height: 1; cursor: pointer; }
+.icon-button:hover { background: #d4af3722; }
+.profile-record { margin: 2px 0 0; color: #b9cdb8; font-size: 12.5px; }
+.wallet { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.wallet-chip { min-width: 92px; padding: 6px 10px; border: 1px solid #d4af3755; border-radius: 999px; color: #ffe9a8; background: #0f3a2f; font: 600 13px 'DM Mono', monospace; text-align: center; white-space: nowrap; }
+.wallet-chip.gem { color: #bfe3ff; border-color: #7fb5ff55; }
+.wallet-chip.inline { min-width: 0; padding: 4px 10px; font-size: 12px; align-self: center; }
+.avatar-picker { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid #d4af3744; border-radius: 14px; background: #04140fbb; animation: fadeUp .3s ease both; }
+.avatar-choice { padding: 2px; border: 2px solid transparent; border-radius: 50%; background: none; cursor: pointer; line-height: 0; transition: transform .15s; }
+.avatar-choice:hover { transform: scale(1.08); }
+.avatar-choice svg { border-radius: 50%; }
+.avatar-choice .avatar-svg { width: 50px; height: 50px; }
+.avatar-choice.selected { border-color: var(--gold, #d4af37); box-shadow: 0 0 14px #d4af3766; }
+.name-editor { display: flex; gap: 8px; animation: fadeUp .3s ease both; }
+.name-editor input { width: 200px; padding: 9px 14px; border: 1px solid #d4af3788; border-radius: 999px; color: #fdf6dd; background: #04140fcc; font: 600 15px 'Manrope', sans-serif; }
+.name-editor input:focus { outline: 2px solid #d4af37; outline-offset: 1px; }
+.name-editor button { padding: 9px 18px; border: 0; border-radius: 999px; color: #2a1d05; background: linear-gradient(180deg, #ffe98a, #d4af37); font: 700 14px 'Manrope', sans-serif; cursor: pointer; }
+.daily-button { padding: 11px 24px; border: 0; border-radius: 999px; color: #2a1d05; background: linear-gradient(180deg, #ffe98a, #d4af37); font: 400 16px 'Lilita One', sans-serif; letter-spacing: .04em; cursor: pointer; box-shadow: 0 5px 0 #6b5014, 0 12px 26px #d4af3755; animation: fadeUp .6s .65s ease both; transition: transform .15s; }
+.daily-button:hover { transform: translateY(-2px); }
+.daily-done { margin: 0; color: #9db8a4; font: 500 12px 'DM Mono', monospace; letter-spacing: .06em; animation: fadeUp .6s .65s ease both; }
+.entry-note { margin: -6px 0 0; color: #cfe3c8; font-size: 13px; animation: fadeUp .6s .7s ease both; }
+@media (max-height: 760px) {
+  .splash-logo { width: min(190px, 30vh); }
+  .splash-inner { gap: 9px; }
+  .profile-card { padding: 8px 12px; }
+  .play-button { min-width: 210px; padding: 13px 36px; font-size: 26px; }
+  .daily-button { padding: 9px 20px; font-size: 15px; }
+}
+@media (max-width: 520px) {
+  .wallet-chip.inline { display: none; }
+  .profile-card { flex-wrap: wrap; }
+  .wallet { flex-direction: row; width: 100%; }
+  .wallet-chip { flex: 1; }
+}
