@@ -102,36 +102,39 @@ const recipes: Record<SoundType, (out: Output, at: number) => void> = {
 }
 
 // --- Background music -----------------------------------------------------
-// A slow lounge pad loop generated with Web Audio: warm chord pads on a
-// Cmaj7 - Am7 - Fmaj7 - Gadd9 cycle, a soft root bass and a sparse
-// pentatonic pluck. No audio files, so the build stays tiny. The music bus
-// gain follows the same mute rules as the effects (the player's toggle and
-// the platform mute), fading smoothly instead of cutting out.
+// A slow, mellow generated lounge cue: 16 changing extended chords, gentle pads,
+// rounded bass, and occasional pentatonic chimes. No external audio is loaded.
 const MUSIC_CHORDS: number[][] = [
-  [48, 52, 55, 59], // Cmaj7
-  [45, 48, 52, 55], // Am7
-  [41, 45, 48, 52], // Fmaj7
-  [43, 47, 50, 57] // Gadd9
+  [41, 48, 52, 55, 57], [48, 52, 55, 59, 62], [45, 48, 52, 55, 57], [45, 48, 52, 55, 59],
+  [41, 48, 53, 57, 60], [48, 55, 60, 62, 64], [43, 50, 53, 57, 60], [48, 53, 55, 59, 62],
+  [45, 52, 55, 57, 60], [43, 50, 55, 57, 62], [40, 47, 52, 55, 59], [45, 52, 55, 57, 64],
+  [41, 48, 52, 57, 62], [40, 47, 52, 55, 60], [43, 50, 53, 57, 62], [48, 55, 59, 62, 64]
 ]
-const MUSIC_PLUCKS = [60, 62, 64, 67, 69, 72]
-const CHORD_SECONDS = 4.8
+const MUSIC_CHIMES = [60, 62, 64, 67, 69, 72, 74, 76]
+const CHORD_SECONDS = 5.2
 
 function midiHz(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12)
 }
 
 function playPadNote(context: AudioContext, bus: GainNode, at: number, midi: number, duration: number): void {
-  const oscillator = context.createOscillator()
+  const freq = midiHz(midi)
+  const triangle = context.createOscillator()
+  const sine = context.createOscillator()
   const envelope = context.createGain()
-  oscillator.type = 'triangle'
-  oscillator.frequency.value = midiHz(midi)
+  triangle.type = 'triangle'
+  triangle.frequency.value = freq
+  sine.type = 'sine'
+  sine.frequency.value = freq + 0.35
   envelope.gain.setValueAtTime(0.0001, at)
-  envelope.gain.exponentialRampToValueAtTime(0.045, at + 1.4)
-  envelope.gain.setValueAtTime(0.045, at + duration - 1.4)
+  envelope.gain.exponentialRampToValueAtTime(0.022, at + 1.6)
+  envelope.gain.setValueAtTime(0.022, at + duration - 1.5)
   envelope.gain.exponentialRampToValueAtTime(0.0001, at + duration)
-  oscillator.connect(envelope).connect(bus)
-  oscillator.start(at)
-  oscillator.stop(at + duration + 0.05)
+  triangle.connect(envelope)
+  sine.connect(envelope)
+  envelope.connect(bus)
+  triangle.start(at); sine.start(at)
+  triangle.stop(at + duration + 0.06); sine.stop(at + duration + 0.06)
 }
 
 function playBassNote(context: AudioContext, bus: GainNode, at: number, midi: number, duration: number): void {
@@ -140,24 +143,29 @@ function playBassNote(context: AudioContext, bus: GainNode, at: number, midi: nu
   oscillator.type = 'sine'
   oscillator.frequency.value = midiHz(midi)
   envelope.gain.setValueAtTime(0.0001, at)
-  envelope.gain.exponentialRampToValueAtTime(0.07, at + 0.06)
-  envelope.gain.exponentialRampToValueAtTime(0.0001, at + duration * 0.9)
+  envelope.gain.exponentialRampToValueAtTime(0.032, at + 0.35)
+  envelope.gain.exponentialRampToValueAtTime(0.0001, at + duration * 0.92)
   oscillator.connect(envelope).connect(bus)
-  oscillator.start(at)
-  oscillator.stop(at + duration)
+  oscillator.start(at); oscillator.stop(at + duration)
 }
 
-function playPluck(context: AudioContext, bus: GainNode, at: number, midi: number): void {
-  const oscillator = context.createOscillator()
+function playChime(context: AudioContext, bus: GainNode, at: number, midi: number): void {
+  const freq = midiHz(midi)
+  const fundamental = context.createOscillator()
+  const overtone = context.createOscillator()
+  const overtoneGain = context.createGain()
   const envelope = context.createGain()
-  oscillator.type = 'triangle'
-  oscillator.frequency.value = midiHz(midi)
+  fundamental.type = 'sine'; fundamental.frequency.value = freq
+  overtone.type = 'sine'; overtone.frequency.value = freq * 2
+  overtoneGain.gain.value = 0.18
   envelope.gain.setValueAtTime(0.0001, at)
-  envelope.gain.exponentialRampToValueAtTime(0.055, at + 0.015)
-  envelope.gain.exponentialRampToValueAtTime(0.0001, at + 0.7)
-  oscillator.connect(envelope).connect(bus)
-  oscillator.start(at)
-  oscillator.stop(at + 0.75)
+  envelope.gain.exponentialRampToValueAtTime(0.018, at + 0.025)
+  envelope.gain.exponentialRampToValueAtTime(0.0001, at + 1.15)
+  fundamental.connect(envelope)
+  overtone.connect(overtoneGain).connect(envelope)
+  envelope.connect(bus)
+  fundamental.start(at); overtone.start(at)
+  fundamental.stop(at + 1.2); overtone.stop(at + 1.2)
 }
 
 class SoundManager {
@@ -223,7 +231,7 @@ class SoundManager {
     if (!this.musicBus) {
       const filter = out.context.createBiquadFilter()
       filter.type = 'lowpass'
-      filter.frequency.value = 1100
+      filter.frequency.value = 850
       this.musicBus = out.context.createGain()
       this.musicBus.gain.value = 0
       this.musicBus.connect(filter).connect(out.master)
@@ -249,9 +257,9 @@ class SoundManager {
     const out = this.output
     if (!out || !this.musicBus) return
     const now = out.context.currentTime
-    const target = this.muted || this.platformMuted ? 0 : 0.85
+    const target = this.muted || this.platformMuted ? 0 : 0.32
     this.musicBus.gain.setTargetAtTime(target, now, 0.35)
-    while (this.nextChordAt < now + 1.4) {
+    while (this.nextChordAt < now + 1.8) {
       this.scheduleChord(this.nextChordAt, MUSIC_CHORDS[this.chordIndex])
       this.chordIndex = (this.chordIndex + 1) % MUSIC_CHORDS.length
       this.nextChordAt += CHORD_SECONDS
@@ -263,14 +271,12 @@ class SoundManager {
     if (!out || !this.musicBus) return
     const context = out.context
     const bus = this.musicBus
-    chord.forEach((midi) => playPadNote(context, bus, at, midi, CHORD_SECONDS + 1.2))
+    chord.forEach((midi) => playPadNote(context, bus, at, midi, CHORD_SECONDS + 1.35))
     playBassNote(context, bus, at, chord[0] - 12, CHORD_SECONDS)
-    // Sparse pluck melody: two slots per chord, each played only sometimes.
-    const slots = [1.2, 3.4]
-    slots.forEach((offset) => {
-      if (Math.random() < 0.55) {
-        const midi = MUSIC_PLUCKS[Math.floor(Math.random() * MUSIC_PLUCKS.length)]
-        playPluck(context, bus, at + offset, midi)
+    ;[1.5, 3.5, 4.4].forEach((offset, index) => {
+      if (Math.random() < 0.38) {
+        const note = MUSIC_CHIMES[(this.chordIndex * 2 + index) % MUSIC_CHIMES.length]
+        playChime(context, bus, at + offset, note)
       }
     })
   }
