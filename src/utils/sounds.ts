@@ -103,18 +103,24 @@ const recipes: Record<SoundType, (out: Output, at: number) => void> = {
 
 // --- Background music -----------------------------------------------------
 // A slow lounge pad loop generated with Web Audio: warm chord pads on a
-// Cmaj7 - Am7 - Fmaj7 - Gadd9 cycle, a soft root bass and a sparse
-// pentatonic pluck. No audio files, so the build stays tiny. The music bus
-// gain follows the same mute rules as the effects (the player's toggle and
-// the platform mute), fading smoothly instead of cutting out.
+// long eight-chord cycle (two phrases, so it takes ~48 s to come back
+// around), a soft root bass and a rare pluck that only ever plays notes
+// from the current chord. Kept deliberately quiet and sparse so it sits
+// under the game instead of looping in the player's ear. No audio files,
+// so the build stays tiny. The music bus gain follows the same mute rules
+// as the effects (the player's toggle and the platform mute), fading
+// smoothly instead of cutting out.
 const MUSIC_CHORDS: number[][] = [
   [48, 52, 55, 59], // Cmaj7
   [45, 48, 52, 55], // Am7
   [41, 45, 48, 52], // Fmaj7
-  [43, 47, 50, 57] // Gadd9
+  [43, 47, 50, 57], // Gadd9
+  [48, 52, 55, 59], // Cmaj7
+  [45, 48, 52, 55], // Am7
+  [50, 53, 57, 60], // Dm7
+  [43, 48, 50, 53] // Gsus — a softer landing than repeating Gadd9
 ]
-const MUSIC_PLUCKS = [60, 62, 64, 67, 69, 72]
-const CHORD_SECONDS = 4.8
+const CHORD_SECONDS = 6
 
 function midiHz(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12)
@@ -126,8 +132,8 @@ function playPadNote(context: AudioContext, bus: GainNode, at: number, midi: num
   oscillator.type = 'triangle'
   oscillator.frequency.value = midiHz(midi)
   envelope.gain.setValueAtTime(0.0001, at)
-  envelope.gain.exponentialRampToValueAtTime(0.045, at + 1.4)
-  envelope.gain.setValueAtTime(0.045, at + duration - 1.4)
+  envelope.gain.exponentialRampToValueAtTime(0.032, at + 1.4)
+  envelope.gain.setValueAtTime(0.032, at + duration - 1.4)
   envelope.gain.exponentialRampToValueAtTime(0.0001, at + duration)
   oscillator.connect(envelope).connect(bus)
   oscillator.start(at)
@@ -140,7 +146,7 @@ function playBassNote(context: AudioContext, bus: GainNode, at: number, midi: nu
   oscillator.type = 'sine'
   oscillator.frequency.value = midiHz(midi)
   envelope.gain.setValueAtTime(0.0001, at)
-  envelope.gain.exponentialRampToValueAtTime(0.07, at + 0.06)
+  envelope.gain.exponentialRampToValueAtTime(0.05, at + 0.06)
   envelope.gain.exponentialRampToValueAtTime(0.0001, at + duration * 0.9)
   oscillator.connect(envelope).connect(bus)
   oscillator.start(at)
@@ -153,7 +159,7 @@ function playPluck(context: AudioContext, bus: GainNode, at: number, midi: numbe
   oscillator.type = 'triangle'
   oscillator.frequency.value = midiHz(midi)
   envelope.gain.setValueAtTime(0.0001, at)
-  envelope.gain.exponentialRampToValueAtTime(0.055, at + 0.015)
+  envelope.gain.exponentialRampToValueAtTime(0.034, at + 0.015)
   envelope.gain.exponentialRampToValueAtTime(0.0001, at + 0.7)
   oscillator.connect(envelope).connect(bus)
   oscillator.start(at)
@@ -259,7 +265,7 @@ class SoundManager {
     const out = this.output
     if (!out || !this.musicBus) return
     const now = out.context.currentTime
-    const target = this.muted || this.platformMuted ? 0 : 0.85
+    const target = this.muted || this.platformMuted ? 0 : 0.55
     this.musicBus.gain.setTargetAtTime(target, now, 0.35)
     while (this.nextChordAt < now + 1.4) {
       this.scheduleChord(this.nextChordAt, MUSIC_CHORDS[this.chordIndex])
@@ -275,11 +281,14 @@ class SoundManager {
     const bus = this.musicBus
     chord.forEach((midi) => playPadNote(context, bus, at, midi, CHORD_SECONDS + 1.2))
     playBassNote(context, bus, at, chord[0] - 12, CHORD_SECONDS)
-    // Sparse pluck melody: two slots per chord, each played only sometimes.
-    const slots = [1.2, 3.4]
+    // Rare pluck melody: two slots per chord, each usually silent, and the
+    // note always comes from the current chord (an octave up) so it can
+    // never clash or turn into a tune the ear starts waiting for.
+    const slots = [1.6, 4.2]
     slots.forEach((offset) => {
-      if (Math.random() < 0.55) {
-        const midi = MUSIC_PLUCKS[Math.floor(Math.random() * MUSIC_PLUCKS.length)]
+      if (Math.random() < 0.3) {
+        const tones = chord.map((midi) => midi + 12)
+        const midi = tones[Math.floor(Math.random() * tones.length)]
         playPluck(context, bus, at + offset, midi)
       }
     })

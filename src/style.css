@@ -561,3 +561,13 @@ button:focus-visible { outline: 2px solid #f0c46a; outline-offset: 2px; }
 .avatar-status { color: #9fc3ae; font: 600 10px 'Manrope', sans-serif; line-height: 1.2; white-space: nowrap; }
 .avatar-choice.selected .avatar-status { color: #f3dc82; }
 .avatar-choice.locked .avatar-status { color: #c9a86a; }
+
+/* ===== Home: corner controls on a centered column =====
+   The top and bottom bars used to pin to the screen edges, so on a wide
+   laptop the profile, sound, daily bonus and wheel sat in far corners
+   with an empty screen between them. The bars now span one centered
+   column, and a soft spotlight behind the logo fills the middle. */
+.splash-top { left: 50%; right: auto; transform: translateX(-50%); width: min(1060px, 100%); }
+.splash-bottom { left: 50%; right: auto; transform: translateX(-50%); width: min(1060px, 100%); }
+.splash::after { content: ''; position: absolute; z-index: 0; left: 50%; top: 50%; width: min(880px, 94vw); height: min(620px, 78vh); transform: translate(-50%, -54%); border-radius: 50%; background: radial-gradient(ellipse at center, #2f9e7430 0%, #2f9e7414 45%, transparent 70%); pointer-events: none; }
+.splash-inner { z-index: 1; gap: 18px; }
