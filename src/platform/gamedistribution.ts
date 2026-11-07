@@ -29,9 +29,48 @@ export function initializeGameDistribution(): void {
     sdkReadyFlag = true
     preloadRewarded()
   })
-  // Video ads carry their own audio — the game must be silent while one plays.
-  window.addEventListener('gd:pause', () => soundManager.setPlatformMuted(true))
-  window.addEventListener('gd:start', () => soundManager.setPlatformMuted(false))
+  // Video ads carry their own audio — the game must be silent while one
+  // plays. But an ad that fails after pausing (adblock, no fill, network
+  // error) may never send its start event; without a failsafe the game
+  // would stay muted forever, so a pause that is never matched by a start
+  // force-unmutes after a grace period.
+  window.addEventListener('gd:pause', () => {
+    adPaused = true
+    soundManager.setPlatformMuted(true)
+    if (pauseFailsafe !== null) window.clearTimeout(pauseFailsafe)
+    pauseFailsafe = window.setTimeout(() => {
+      if (adPaused) {
+        adPaused = false
+        soundManager.setPlatformMuted(false)
+      }
+    }, 45_000)
+  })
+  window.addEventListener('gd:start', () => {
+    adPaused = false
+    if (pauseFailsafe !== null) {
+      window.clearTimeout(pauseFailsafe)
+      pauseFailsafe = null
+    }
+    soundManager.setPlatformMuted(false)
+  })
+}
+
+let adPaused = false
+let pauseFailsafe: number | null = null
+
+// When an ad break ends, make sure the game is not left muted by a pause
+// whose start event never arrived.
+function ensureUnmutedAfterBreak(): void {
+  if (!adPaused) {
+    soundManager.setPlatformMuted(false)
+    return
+  }
+  window.setTimeout(() => {
+    if (adPaused) {
+      adPaused = false
+      soundManager.setPlatformMuted(false)
+    }
+  }, 3000)
 }
 
 function canShowAd(): boolean {
@@ -78,6 +117,7 @@ export function gdAdBreak(kind: 'preroll' | 'midroll'): Promise<void> {
       finished = true
       window.removeEventListener('gd:pause', onPause)
       window.removeEventListener('gd:start', onStart)
+      ensureUnmutedAfterBreak()
       resolve()
     }
     const onPause = () => {
@@ -121,6 +161,7 @@ export function gdRewardedAd(): Promise<boolean> {
       window.removeEventListener('gd:rewarded', onRewarded)
       window.removeEventListener('gd:pause', onPause)
       window.removeEventListener('gd:start', onStart)
+      ensureUnmutedAfterBreak()
       // A completed reward also counts as the latest ad, so the round-end
       // interstitial does not fire straight after it.
       if (value) lastMidrollAt = Date.now()

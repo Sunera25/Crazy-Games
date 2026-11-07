@@ -20,6 +20,16 @@ type CrazyGamesSdk = {
     setItem: (key: string, value: string) => void
     removeItem?: (key: string) => void
   }
+  ad?: {
+    requestAd: (
+      adType: 'midgame' | 'rewarded',
+      callbacks: {
+        adStarted?: () => void
+        adFinished?: () => void
+        adError?: (error: unknown) => void
+      }
+    ) => void
+  }
   user?: {
     isUserAccountAvailable: (callback: (error: unknown, available: boolean) => void) => unknown
     getUser: (callback: (error: unknown, user: CgUser | null) => void) => unknown
@@ -107,6 +117,70 @@ export async function loginWithCrazyGames(): Promise<void> {
   } catch {
     // userCancelled / prompt already open — the player stays a guest.
   }
+}
+
+// Video ads, mirroring the GameDistribution breaks. CrazyGames has no
+// 'preroll' request type — the platform serves its own preroll around the
+// first gameplay start — so a preroll break is a no-op here, and a midroll
+// break is a 'midgame' request at a natural pause (the SDK itself caps
+// frequency). The game is muted while an ad plays, per the ad guidelines,
+// and every callback path un-mutes and lets the game continue: an unfilled
+// or failed ad must never stall play.
+export function crazyGamesAdBreak(kind: 'preroll' | 'midroll'): Promise<void> {
+  if (kind === 'preroll') return Promise.resolve()
+  const candidate = sdk
+  if (!candidate?.ad?.requestAd) return Promise.resolve()
+  const ad = candidate.ad
+  return new Promise((resolve) => {
+    let finished = false
+    const finish = () => {
+      if (finished) return
+      finished = true
+      soundManager.setPlatformMuted(false)
+      resolve()
+    }
+    window.setTimeout(finish, 35_000)
+    try {
+      ad.requestAd('midgame', {
+        adStarted: () => soundManager.setPlatformMuted(true),
+        adFinished: finish,
+        adError: finish
+      })
+    } catch {
+      finish()
+    }
+  })
+}
+
+export type CgRewardedResult = 'watched' | 'failed' | 'unavailable'
+
+// Rewarded ad for the CrazyGames build. Per the platform's ad rules the
+// reward is granted only on adFinished — an adError (unfilled, blocked,
+// dismissed) grants nothing. 'unavailable' means there is no ad module at
+// all (the game is not running on CrazyGames), where no ad exists to watch.
+export function crazyGamesRewardedAd(): Promise<CgRewardedResult> {
+  const candidate = sdk
+  if (!candidate?.ad?.requestAd) return Promise.resolve('unavailable')
+  const ad = candidate.ad
+  return new Promise((resolve) => {
+    let finished = false
+    const finish = (result: CgRewardedResult) => {
+      if (finished) return
+      finished = true
+      soundManager.setPlatformMuted(false)
+      resolve(result)
+    }
+    window.setTimeout(() => finish('failed'), 90_000)
+    try {
+      ad.requestAd('rewarded', {
+        adStarted: () => soundManager.setPlatformMuted(true),
+        adFinished: () => finish('watched'),
+        adError: () => finish('failed')
+      })
+    } catch {
+      finish('failed')
+    }
+  })
 }
 
 declare global {

@@ -489,7 +489,8 @@ button:focus-visible { outline: 2px solid #f0c46a; outline-offset: 2px; }
 .panel-name { justify-content: center; }
 .panel-name strong { font-size: 22px; }
 .picker-label { margin: 14px 0 6px; color: #e8ba63; font: 600 11px 'DM Mono', monospace; letter-spacing: .14em; text-transform: uppercase; }
-.profile-panel .avatar-picker { justify-content: center; border: 0; background: none; padding: 2px; }
+.profile-panel .avatar-picker { justify-content: center; flex-wrap: wrap; border: 0; background: none; padding: 2px; }
+.profile-panel .daily-button { animation: none; }
 .account-box { margin-top: 16px; padding-top: 14px; border-top: 1px solid #d4af3733; }
 .account-status { margin: 0 0 4px; color: #cfe3c8; font-size: 14px; }
 .account-note { margin: 4px 0 0; color: #9db8a4; font-size: 12px; line-height: 1.5; }
@@ -497,3 +498,18 @@ button:focus-visible { outline: 2px solid #f0c46a; outline-offset: 2px; }
   .splash-top .paint-login { display: none; }
   .chip-name { max-width: 96px; }
 }
+
+/* ===== Daily gem wheel + locked avatars ===== */
+.wheel-button { padding: 11px 24px; border: 1px solid #7fb5ff88; border-radius: 999px; color: #d7ebff; background: #12324dcc; font: 400 16px 'Lilita One', sans-serif; letter-spacing: .04em; cursor: pointer; box-shadow: 0 10px 26px #0009; animation: fadeUp .6s .7s ease both; transition: transform .15s, background .2s; }
+.wheel-button:hover { transform: translateY(-2px); background: #1a4266; }
+.wheel-title { margin: 0 0 10px; color: var(--gold-bright, #f3dc82); font: 400 22px 'Lilita One', sans-serif; letter-spacing: .05em; }
+.wheel-wrap { position: relative; width: min(300px, 76vw); margin: 0 auto; }
+.wheel-svg { display: block; width: 100%; height: auto; filter: drop-shadow(0 14px 30px #000a); }
+.wheel-rotor { transform-box: fill-box; transform-origin: center; transition: transform 5s cubic-bezier(.12, .72, .08, 1); }
+.wheel-pointer { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); z-index: 2; color: #f3dc82; font-size: 24px; text-shadow: 0 3px 8px #000c; }
+.wheel-status { min-height: 20px; margin: 14px 0 10px; color: #cfe3c8; font-size: 14px; line-height: 1.5; }
+.wheel-panel .daily-button:disabled { opacity: .55; cursor: default; box-shadow: none; }
+.avatar-choice { position: relative; }
+.avatar-choice.locked svg { filter: grayscale(.9) brightness(.55); }
+.avatar-choice.locked::after { content: '🔒'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 19px; text-shadow: 0 2px 6px #000; }
+.unlock-note { min-height: 18px; margin: 8px 0 0; color: #e8ba63; font-size: 13px; line-height: 1.45; }

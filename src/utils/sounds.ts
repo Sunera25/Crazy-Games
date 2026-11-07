@@ -68,36 +68,36 @@ function playBurst(out: Output, at: number, options: BurstOptions): void {
 const recipes: Record<SoundType, (out: Output, at: number) => void> = {
   deal: (out, at) => {
     // Soft whoosh down, then a light card landing snap.
-    playBurst(out, at, { frequency: 1400, endFrequency: 500, q: 0.7, duration: 0.14, gain: 0.28 })
-    playBurst(out, at, { frequency: 2400, q: 1, duration: 0.04, gain: 0.16, offset: 0.09 })
+    playBurst(out, at, { frequency: 1400, endFrequency: 500, q: 0.7, duration: 0.14, gain: 0.36 })
+    playBurst(out, at, { frequency: 2400, q: 1, duration: 0.04, gain: 0.22, offset: 0.09 })
   },
   play: (out, at) => {
     // Card snap: short noise burst plus a soft low thump, no tone.
     playBurst(out, at, { frequency: 1700, q: 1.2, duration: 0.06, gain: 0.42 })
-    playBurst(out, at, { frequency: 420, q: 0.8, duration: 0.05, gain: 0.14, offset: 0.01 })
+    playBurst(out, at, { frequency: 420, q: 0.8, duration: 0.05, gain: 0.2, offset: 0.01 })
   },
   shuffle: (out, at) => {
     const taps = [0, 0.05, 0.11, 0.19, 0.26]
     taps.forEach((offset, index) => {
-      playBurst(out, at, { frequency: 1500 + index * 200, q: 1.2, duration: 0.035, gain: 0.26, offset })
+      playBurst(out, at, { frequency: 1500 + index * 200, q: 1.2, duration: 0.035, gain: 0.32, offset })
     })
   },
   click: (out, at) => {
-    playBurst(out, at, { frequency: 3200, q: 1.5, duration: 0.025, gain: 0.13 })
+    playBurst(out, at, { frequency: 3200, q: 1.5, duration: 0.025, gain: 0.22 })
   },
   score: (out, at) => {
-    playTone(out, at, { frequency: 880, duration: 0.15, type: 'sine', gain: 0.07 })
-    playTone(out, at, { frequency: 1318, duration: 0.2, type: 'sine', gain: 0.06, offset: 0.08 })
+    playTone(out, at, { frequency: 880, duration: 0.15, type: 'sine', gain: 0.13 })
+    playTone(out, at, { frequency: 1318, duration: 0.2, type: 'sine', gain: 0.11, offset: 0.08 })
   },
   win: (out, at) => {
     const notes = [523.25, 659.25, 783.99, 1046.5]
     notes.forEach((frequency, index) => {
-      playTone(out, at, { frequency, duration: 0.28, type: 'sine', gain: 0.08, offset: index * 0.09 })
+      playTone(out, at, { frequency, duration: 0.28, type: 'sine', gain: 0.14, offset: index * 0.09 })
     })
   },
   lose: (out, at) => {
-    playTone(out, at, { frequency: 392, duration: 0.22, type: 'sine', gain: 0.06 })
-    playTone(out, at, { frequency: 329.63, duration: 0.32, type: 'sine', gain: 0.06, offset: 0.18 })
+    playTone(out, at, { frequency: 392, duration: 0.22, type: 'sine', gain: 0.11 })
+    playTone(out, at, { frequency: 329.63, duration: 0.32, type: 'sine', gain: 0.11, offset: 0.18 })
   }
 }
 
@@ -126,8 +126,8 @@ function playPadNote(context: AudioContext, bus: GainNode, at: number, midi: num
   oscillator.type = 'triangle'
   oscillator.frequency.value = midiHz(midi)
   envelope.gain.setValueAtTime(0.0001, at)
-  envelope.gain.exponentialRampToValueAtTime(0.028, at + 1.4)
-  envelope.gain.setValueAtTime(0.028, at + duration - 1.4)
+  envelope.gain.exponentialRampToValueAtTime(0.045, at + 1.4)
+  envelope.gain.setValueAtTime(0.045, at + duration - 1.4)
   envelope.gain.exponentialRampToValueAtTime(0.0001, at + duration)
   oscillator.connect(envelope).connect(bus)
   oscillator.start(at)
@@ -140,7 +140,7 @@ function playBassNote(context: AudioContext, bus: GainNode, at: number, midi: nu
   oscillator.type = 'sine'
   oscillator.frequency.value = midiHz(midi)
   envelope.gain.setValueAtTime(0.0001, at)
-  envelope.gain.exponentialRampToValueAtTime(0.05, at + 0.06)
+  envelope.gain.exponentialRampToValueAtTime(0.07, at + 0.06)
   envelope.gain.exponentialRampToValueAtTime(0.0001, at + duration * 0.9)
   oscillator.connect(envelope).connect(bus)
   oscillator.start(at)
@@ -153,7 +153,7 @@ function playPluck(context: AudioContext, bus: GainNode, at: number, midi: numbe
   oscillator.type = 'triangle'
   oscillator.frequency.value = midiHz(midi)
   envelope.gain.setValueAtTime(0.0001, at)
-  envelope.gain.exponentialRampToValueAtTime(0.04, at + 0.015)
+  envelope.gain.exponentialRampToValueAtTime(0.055, at + 0.015)
   envelope.gain.exponentialRampToValueAtTime(0.0001, at + 0.7)
   oscillator.connect(envelope).connect(bus)
   oscillator.start(at)
@@ -199,7 +199,7 @@ class SoundManager {
     if (typeof window === 'undefined' || !window.AudioContext) return null
     const context = new window.AudioContext()
     const master = context.createGain()
-    master.gain.value = 0.55
+    master.gain.value = 0.9
     const compressor = context.createDynamicsCompressor()
     master.connect(compressor).connect(context.destination)
     const noise = context.createBuffer(1, context.sampleRate * 0.5, context.sampleRate)

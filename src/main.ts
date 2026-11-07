@@ -3,8 +3,8 @@ import { createDeck, rankValue, shuffleDeck, type Card, type Suit } from './game
 import { dealFirstBatch, dealSecondBatch, type PartialDeal } from './game/deal.ts'
 import { chooseCard, chooseTrump } from './game/ai.ts'
 import { isLegalCard, scoreRound, trickWinner, type PlayedCard, type Team, teamForPlayer } from './game/rules.ts'
-import { gameplayStart, gameplayStop, initializeCrazyGames, loadingStart, loadingStop, loginWithCrazyGames } from './platform/crazygames.ts'
-import { gdAdBreak, gdAdsEnabled, gdRewardedAd, initializeGameDistribution } from './platform/gamedistribution.ts'
+import { crazyGamesAdBreak, crazyGamesRewardedAd, gameplayStart, gameplayStop, initializeCrazyGames, loadingStart, loadingStop, loginWithCrazyGames } from './platform/crazygames.ts'
+import { gdAdBreak, gdRewardedAd, initializeGameDistribution } from './platform/gamedistribution.ts'
 import { soundManager } from './utils/sounds.ts'
 import { storeGet, storeSet } from './utils/storage.ts'
 import { createParticleEffectSVG, createPlayerAvatarSVG, getAvatarColor } from './utils/index.ts'
@@ -95,7 +95,6 @@ function celebrate(): void {
 const ENTRY_FEE = 25
 const WIN_COINS = 60
 const LOSE_COINS = 10
-const WIN_GEMS = 2
 const DAILY_COINS = 100
 
 const AVATAR_CHOICES = [
@@ -104,17 +103,31 @@ const AVATAR_CHOICES = [
   { seed: 'Kasun', style: 'sky' },
   { seed: 'Tharushi', style: 'lavender' },
   { seed: 'Nimal', style: 'mint' },
-  { seed: 'Dilshan', style: 'coral' }
+  { seed: 'Dilshan', style: 'coral' },
+  { seed: 'Isuru', style: 'sky' },
+  { seed: 'Chathura', style: 'coral' },
+  { seed: 'Sahan', style: 'mint' },
+  { seed: 'Kavya', style: 'rose' },
+  { seed: 'Ruwan', style: 'lavender' },
+  { seed: 'Tharindu', style: 'saffron' }
 ]
 
-interface Wallet { coins: number; gems: number; lastDaily: string }
-interface Profile { name: string; avatar: number; nameCustomized: boolean }
+// The first avatars are free; the rest unlock permanently for gems.
+const FREE_AVATARS = 6
+const UNLOCK_COST = 5
+
+function isAvatarUnlocked(index: number): boolean {
+  return index < FREE_AVATARS || profile.unlocked.includes(index)
+}
+
+interface Wallet { coins: number; gems: number; lastDaily: string; lastWheel: string }
+interface Profile { name: string; avatar: number; nameCustomized: boolean; unlocked: number[] }
 let wallet: Wallet = loadWallet()
 let profile: Profile = loadProfile()
 let nameEditOpen = false
 
 function loadWallet(): Wallet {
-  const empty: Wallet = { coins: 100, gems: 0, lastDaily: '' }
+  const empty: Wallet = { coins: 100, gems: 0, lastDaily: '', lastWheel: '' }
   try {
     const raw = storeGet('omi-wallet')
     if (raw) return { ...empty, ...(JSON.parse(raw) as Partial<Wallet>) }
@@ -127,7 +140,7 @@ function saveWallet(): void {
 }
 
 function loadProfile(): Profile {
-  const empty: Profile = { name: 'Player', avatar: 0, nameCustomized: false }
+  const empty: Profile = { name: 'Player', avatar: 0, nameCustomized: false, unlocked: [] }
   try {
     const raw = storeGet('omi-profile')
     if (raw) return { ...empty, ...(JSON.parse(raw) as Partial<Profile>) }
@@ -149,7 +162,8 @@ function dailyAvailable(): boolean {
 }
 
 function myAvatar(): { seed: string; style: string } {
-  return AVATAR_CHOICES[profile.avatar] ?? AVATAR_CHOICES[0]
+  const index = isAvatarUnlocked(profile.avatar) ? profile.avatar : 0
+  return AVATAR_CHOICES[index] ?? AVATAR_CHOICES[0]
 }
 
 function escapeHtml(value: string): string {
@@ -196,6 +210,84 @@ window.addEventListener('omi:cg-account', (event) => {
   }
   paintHomeUI()
 })
+
+// --- Platform ads -------------------------------------------------------------
+// One facade over both platforms' ad systems: GameDistribution's SDK events
+// in the GD build, CrazyGames requestAd in the CG build.
+const isGdMode = import.meta.env.MODE === 'gamedistribution'
+
+function platformAdBreak(kind: 'preroll' | 'midroll'): Promise<void> {
+  return isGdMode ? gdAdBreak(kind) : crazyGamesAdBreak(kind)
+}
+
+async function platformRewardedAd(): Promise<boolean> {
+  if (isGdMode) return gdRewardedAd()
+  const result = await crazyGamesRewardedAd()
+  // 'unavailable' means no ad module exists in this environment (the game
+  // is not running on CrazyGames), so there is no ad to watch. On a real ad
+  // system only a fully watched ad earns the reward.
+  return result !== 'failed'
+}
+
+// --- Daily gem wheel ------------------------------------------------------------
+// One spin per day, gated behind a rewarded ad. Gems come from here (and a
+// rare Kapothi) — match wins pay coins only.
+const WHEEL_PRIZES = [1, 2, 1, 3, 1, 2, 5, 1]
+const WHEEL_WEIGHTS = [22, 18, 22, 10, 22, 14, 4, 18]
+let wheelRotation = 0
+let wheelSpinning = false
+let wheelStatus = ''
+let unlockNote = ''
+
+function wheelAvailable(): boolean {
+  return wallet.lastWheel !== todayKey()
+}
+
+function pickWheelPrize(): number {
+  const total = WHEEL_WEIGHTS.reduce((a, b) => a + b, 0)
+  let roll = Math.random() * total
+  for (let i = 0; i < WHEEL_WEIGHTS.length; i++) {
+    roll -= WHEEL_WEIGHTS[i]
+    if (roll <= 0) return i
+  }
+  return 0
+}
+
+function wheelPoint(angleDeg: number, radius: number): [number, number] {
+  const rad = (angleDeg * Math.PI) / 180
+  return [100 + radius * Math.sin(rad), 100 - radius * Math.cos(rad)]
+}
+
+function wheelSVG(): string {
+  const segments = WHEEL_PRIZES.map((prize, i) => {
+    const a0 = i * 45
+    const [x0, y0] = wheelPoint(a0, 96)
+    const [x1, y1] = wheelPoint(a0 + 45, 96)
+    const [tx, ty] = wheelPoint(a0 + 22.5, 68)
+    const fill = i % 2 === 0 ? '#0f5132' : '#d4af37'
+    const textFill = i % 2 === 0 ? '#ffe9a8' : '#2a1d05'
+    return `<path d="M100 100 L${x0.toFixed(1)} ${y0.toFixed(1)} A96 96 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)} Z" fill="${fill}" stroke="#06231b" stroke-width="1.5"/><text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" fill="${textFill}" font-size="16" font-weight="700" text-anchor="middle" dominant-baseline="middle">${prize}💎</text>`
+  }).join('')
+  return `<svg class="wheel-svg" viewBox="0 0 200 200" role="img" aria-label="Gem prize wheel"><circle cx="100" cy="100" r="99" fill="#06231b"/><g class="wheel-rotor">${segments}</g><circle cx="100" cy="100" r="17" fill="#06231b" stroke="#d4af37" stroke-width="2.5"/><text x="100" y="101" fill="#f3dc82" font-size="11" font-weight="700" text-anchor="middle" dominant-baseline="middle">OMI</text></svg>`
+}
+
+function wheelPanelMarkup(): string {
+  return `<div class="profile-backdrop" data-wheel-panel hidden><section class="profile-panel wheel-panel" role="dialog" aria-label="Daily gem wheel"><button class="panel-close" type="button" data-action="close-wheel" aria-label="Close wheel">✕</button><h3 class="wheel-title">Daily Gem Wheel</h3><div class="wheel-wrap">${wheelSVG()}<div class="wheel-pointer">▼</div></div><p class="wheel-status paint-wheel-status"></p><button class="daily-button paint-wheel-action" type="button" data-action="wheel-spin">▶ Watch ad &amp; spin</button></section></div>`
+}
+
+function paintWheelUI(): void {
+  const status = app.querySelector('.paint-wheel-status')
+  if (status) status.textContent = wheelStatus || (wheelAvailable() ? 'One spin a day — watch a short ad, then spin for gems.' : 'You already spun today — come back tomorrow.')
+  const action = app.querySelector<HTMLButtonElement>('.paint-wheel-action')
+  if (action) {
+    action.disabled = wheelSpinning || !wheelAvailable()
+    action.textContent = wheelSpinning ? 'Spinning…' : wheelAvailable() ? '▶ Watch ad & spin' : 'Come back tomorrow'
+  }
+  const slot = app.querySelector('.paint-wheel')
+  if (slot) {
+    slot.innerHTML = wheelAvailable() ? `<button class="wheel-button" type="button" data-action="wheel">🎡 Daily wheel · Win gems 💎</button>` : `<p class="daily-done">🎡 Wheel spun — back tomorrow</p>`
+  }
+}
 const app = document.querySelector<HTMLDivElement>('#app')!
 
 const botNamePool = ['Nimal', 'Amaya', 'Kasun', 'Dilshan', 'Sahan', 'Tharushi', 'Isuru', 'Chathura']
@@ -237,7 +329,7 @@ function sortedHand(hand: readonly Card[]): Card[] {
 
 function render(): void {
   const trumpLabel = trumpSuit ? `${suitSymbols[trumpSuit]} ${suitNames[trumpSuit]}` : 'Choose a trump suit'
-  const showHintButton = gdAdsEnabled() && !!trumpSuit && currentPlayer === 0 && !roundFinished && !matchOver && !trickClosing && !hintUsedThisRound && !rewardPopup
+  const showHintButton = !!trumpSuit && currentPlayer === 0 && !roundFinished && !matchOver && !trickClosing && !hintUsedThisRound && !rewardPopup
   const coachText = !coachPending || rewardPopup || rulesOpen || roundFinished || matchOver ? '' :
     !trumpSuit && trumpCaller === 0
       ? 'First, choose your trump suit — pick the suit where your cards are strongest.'
@@ -276,7 +368,7 @@ function render(): void {
         startRound()
       }
     }
-    void gdAdBreak('midroll').then(proceed)
+    void platformAdBreak('midroll').then(proceed)
   }))
   app.querySelectorAll<HTMLButtonElement>('[data-action="hint"]').forEach((button) => button.addEventListener('click', () => { rewardPopup = 'hint'; render() }))
   app.querySelectorAll<HTMLButtonElement>('[data-action="reward-watch"]').forEach((button) => button.addEventListener('click', () => { void watchRewardAd() }))
@@ -289,7 +381,7 @@ async function watchRewardAd(): Promise<void> {
   if (!kind) return
   rewardPopup = null
   render()
-  const watched = await gdRewardedAd()
+  const watched = await platformRewardedAd()
   if (kind === 'hint') {
     if (watched && trumpSuit) {
       hintCard = chooseCard(hands[0], trick, trumpSuit, 0)
@@ -424,8 +516,7 @@ function finishRound(): void {
       stats.streak += 1
       stats.best = Math.max(stats.best, stats.streak)
       wallet.coins += WIN_COINS
-      wallet.gems += WIN_GEMS
-      message += ` · +${WIN_COINS} 🪙 +${WIN_GEMS} 💎`
+      message += ` · +${WIN_COINS} 🪙`
     } else {
       stats.streak = 0
       wallet.coins += LOSE_COINS
@@ -437,7 +528,7 @@ function finishRound(): void {
   if ((result.isKapothi && result.winner === 'northSouth') || (matchOver && tokens.northSouth >= 10)) celebrate()
   // GameDistribution rewarded offer: once per match, when the rivals score,
   // the player can watch an ad to cancel the tokens they just gained.
-  if (!matchOver && gdAdsEnabled() && result.winner === 'eastWest' && !secondChanceUsed) {
+  if (!matchOver && result.winner === 'eastWest' && !secondChanceUsed) {
     secondChanceUsed = true
     secondChanceAmount = result.tokens
     rewardPopup = 'second-chance'
@@ -517,7 +608,7 @@ function paintHomeUI(): void {
   const dailyEl = splash.querySelector('.paint-daily')
   if (dailyEl) dailyEl.innerHTML = dailyAvailable() ? `<button class="daily-button" type="button" data-action="daily">🎁 Daily bonus · Claim +${DAILY_COINS} 🪙</button>` : `<p class="daily-done">🎁 Daily bonus claimed — come back tomorrow</p>`
   const entryEl = splash.querySelector('.paint-entry')
-  if (entryEl) entryEl.textContent = wallet.coins >= ENTRY_FEE ? `Entry ${ENTRY_FEE} 🪙 · Win the match +${WIN_COINS} 🪙 +${WIN_GEMS} 💎` : `Not enough coins — this match is free · Win +${WIN_COINS} 🪙 +${WIN_GEMS} 💎`
+  if (entryEl) entryEl.textContent = wallet.coins >= ENTRY_FEE ? `Entry ${ENTRY_FEE} 🪙 · Win the match +${WIN_COINS} 🪙` : `Not enough coins — this match is free · Win +${WIN_COINS} 🪙`
   const loginEl = splash.querySelector('.paint-login')
   if (loginEl) loginEl.innerHTML = cgAccount.available && !cgAccount.username ? `<button class="cg-login-button" type="button" data-action="cg-login">Login with CrazyGames</button>` : ''
   const recordEl = splash.querySelector('.paint-record')
@@ -536,23 +627,48 @@ function paintHomeUI(): void {
         ? `<button class="cg-login-button wide" type="button" data-action="cg-login">Login with CrazyGames</button><p class="account-note">Login to save your coins, gems and record to your account — on every device.</p>`
         : `<p class="account-note">Playing as guest — progress saves on this device.</p>`
   }
-  splash.querySelectorAll<HTMLButtonElement>('[data-avatar]').forEach((button) => button.classList.toggle('selected', Number(button.dataset.avatar ?? -1) === profile.avatar))
+  splash.querySelectorAll<HTMLButtonElement>('[data-avatar]').forEach((button) => {
+    const index = Number(button.dataset.avatar ?? -1)
+    button.classList.toggle('selected', index === profile.avatar)
+    button.classList.toggle('locked', !isAvatarUnlocked(index))
+  })
+  const unlockEl = splash.querySelector('.paint-unlock-note')
+  if (unlockEl) unlockEl.textContent = unlockNote
+  paintWheelUI()
 }
 
 function showSplash(showRules = false): void {
   const suits = (['spades', 'hearts', 'clubs', 'diamonds'] as Suit[]).map((suit, i) => `<span class="splash-suit s${i}">${suitIconSVG(suit, 40)}</span>`).join('')
   nameEditOpen = false
-  app.innerHTML = `<main class="splash">${suits}<div class="splash-top"><button class="profile-chip" type="button" data-action="profile"><span class="paint-avatar" data-size="40"></span><span class="paint-name chip-name"></span></button><div class="splash-top-right"><span class="paint-login"></span><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button></div></div><div class="splash-inner"><img class="splash-logo" src="${logoUrl}" alt="Omi"><p class="splash-tag">The Sri Lankan trick-taking classic</p><div class="wallet-row paint-wallet"></div><div class="paint-daily"></div><button class="play-button" type="button" data-action="play">Play match</button><p class="entry-note paint-entry"></p><button class="splash-rules" type="button" data-action="how">How to play</button><p class="splash-foot">4 players · 2 teams · First to 10 tokens</p></div><div class="profile-backdrop" data-panel hidden><section class="profile-panel" role="dialog" aria-label="Your profile"><button class="panel-close" type="button" data-action="close-profile" aria-label="Close profile">✕</button><div class="panel-avatar paint-avatar" data-size="76"></div><div class="paint-name-block"></div><p class="profile-record paint-record"></p><p class="picker-label">Choose your avatar — it's free</p><div class="avatar-picker" role="group" aria-label="Choose your avatar">${AVATAR_CHOICES.map((c, i) => `<button type="button" class="avatar-choice" data-avatar="${i}" aria-label="Avatar ${i + 1}">${createPlayerAvatarSVG(c.seed, c.style, 50)}</button>`).join('')}</div><div class="paint-account account-box"></div></section></div></main>`
+  app.innerHTML = `<main class="splash">${suits}<div class="splash-top"><button class="profile-chip" type="button" data-action="profile"><span class="paint-avatar" data-size="40"></span><span class="paint-name chip-name"></span></button><div class="splash-top-right"><span class="paint-login"></span><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button></div></div><div class="splash-inner"><img class="splash-logo" src="${logoUrl}" alt="Omi"><p class="splash-tag">The Sri Lankan trick-taking classic</p><div class="wallet-row paint-wallet"></div><div class="paint-daily"></div><div class="paint-wheel"></div><button class="play-button" type="button" data-action="play">Play match</button><p class="entry-note paint-entry"></p><button class="splash-rules" type="button" data-action="how">How to play</button><p class="splash-foot">4 players · 2 teams · First to 10 tokens</p></div><div class="profile-backdrop" data-panel hidden><section class="profile-panel" role="dialog" aria-label="Your profile"><button class="panel-close" type="button" data-action="close-profile" aria-label="Close profile">✕</button><div class="panel-avatar paint-avatar" data-size="76"></div><div class="paint-name-block"></div><p class="profile-record paint-record"></p><p class="picker-label">Choose your avatar · 🔒 = 5 💎</p><div class="avatar-picker" role="group" aria-label="Choose your avatar">${AVATAR_CHOICES.map((c, i) => `<button type="button" class="avatar-choice" data-avatar="${i}" aria-label="Avatar ${i + 1}">${createPlayerAvatarSVG(c.seed, c.style, 50)}</button>`).join('')}</div><p class="unlock-note paint-unlock-note"></p><div class="paint-account account-box"></div></section></div>${wheelPanelMarkup()}</main>`
   const splash = app.querySelector('.splash')
   splash?.addEventListener('click', (event) => {
     const target = event.target as HTMLElement
-    if (target.hasAttribute('data-panel')) {
+    if (target.hasAttribute('data-panel') || target.hasAttribute('data-wheel-panel')) {
       target.hidden = true
       return
     }
     const avatarButton = target.closest<HTMLButtonElement>('[data-avatar]')
     if (avatarButton) {
-      profile.avatar = Number(avatarButton.dataset.avatar ?? 0)
+      const index = Number(avatarButton.dataset.avatar ?? 0)
+      if (!isAvatarUnlocked(index)) {
+        if (wallet.gems >= UNLOCK_COST) {
+          wallet.gems -= UNLOCK_COST
+          profile.unlocked = [...profile.unlocked, index]
+          profile.avatar = index
+          saveWallet()
+          saveProfile()
+          unlockNote = 'Unlocked — that avatar is yours now!'
+          soundManager.play('score')
+        } else {
+          unlockNote = `That avatar costs ${UNLOCK_COST} 💎 — you have ${wallet.gems} 💎. Spin the daily wheel to earn gems.`
+          soundManager.play('click')
+        }
+        paintHomeUI()
+        return
+      }
+      profile.avatar = index
+      unlockNote = ''
       saveProfile()
       soundManager.play('click')
       paintHomeUI()
@@ -564,7 +680,7 @@ function showSplash(showRules = false): void {
     if (action === 'play') {
       soundManager.play('click')
       soundManager.startMusic()
-      void gdAdBreak('preroll').then(() => {
+      void platformAdBreak('preroll').then(() => {
         splash.classList.add('leaving')
         window.setTimeout(newMatch, 450)
       })
@@ -585,6 +701,52 @@ function showSplash(showRules = false): void {
     } else if (action === 'cg-login') {
       soundManager.play('click')
       void loginWithCrazyGames()
+    } else if (action === 'wheel') {
+      const panel = splash.querySelector<HTMLElement>('[data-wheel-panel]')
+      if (panel) panel.hidden = false
+      wheelStatus = ''
+      paintWheelUI()
+      soundManager.play('click')
+    } else if (action === 'close-wheel') {
+      const panel = splash.querySelector<HTMLElement>('[data-wheel-panel]')
+      if (panel) panel.hidden = true
+    } else if (action === 'wheel-spin') {
+      if (wheelSpinning || !wheelAvailable()) return
+      void (async () => {
+        wheelStatus = 'Loading your ad…'
+        paintWheelUI()
+        const watched = await platformRewardedAd()
+        if (!watched) {
+          wheelStatus = "The ad didn't finish — watch it fully to spin."
+          paintWheelUI()
+          return
+        }
+        wallet.lastWheel = todayKey()
+        saveWallet()
+        const prizeIndex = pickWheelPrize()
+        const prize = WHEEL_PRIZES[prizeIndex]
+        wheelSpinning = true
+        wheelStatus = ''
+        paintHomeUI()
+        const center = prizeIndex * 45 + 22.5
+        const jitter = Math.random() * 24 - 12
+        const base = (360 - center + jitter) % 360
+        const current = wheelRotation % 360
+        const delta = ((base - current) % 360 + 360) % 360
+        wheelRotation += 360 * 6 + delta
+        const rotor = splash.querySelector<HTMLElement>('.wheel-rotor')
+        if (rotor) rotor.style.transform = `rotate(${wheelRotation}deg)`
+        soundManager.play('shuffle')
+        window.setTimeout(() => {
+          wheelSpinning = false
+          wallet.gems += prize
+          saveWallet()
+          wheelStatus = `You won ${prize} 💎!`
+          soundManager.play('win')
+          celebrate()
+          paintHomeUI()
+        }, 5200)
+      })()
     } else if (action === 'edit-name') {
       nameEditOpen = true
       paintHomeUI()
