@@ -3,7 +3,7 @@ import { createDeck, rankValue, shuffleDeck, type Card, type Suit } from './game
 import { dealFirstBatch, dealSecondBatch, type PartialDeal } from './game/deal.ts'
 import { chooseCard, chooseTrump } from './game/ai.ts'
 import { isLegalCard, scoreRound, trickWinner, type PlayedCard, type Team, teamForPlayer } from './game/rules.ts'
-import { gameplayStart, gameplayStop, initializeCrazyGames, loadingStart, loadingStop } from './platform/crazygames.ts'
+import { gameplayStart, gameplayStop, initializeCrazyGames, loadingStart, loadingStop, loginWithCrazyGames } from './platform/crazygames.ts'
 import { gdAdBreak, gdAdsEnabled, gdRewardedAd, initializeGameDistribution } from './platform/gamedistribution.ts'
 import { soundManager } from './utils/sounds.ts'
 import { storeGet, storeSet } from './utils/storage.ts'
@@ -111,7 +111,6 @@ interface Wallet { coins: number; gems: number; lastDaily: string }
 interface Profile { name: string; avatar: number; nameCustomized: boolean }
 let wallet: Wallet = loadWallet()
 let profile: Profile = loadProfile()
-let avatarPickerOpen = false
 let nameEditOpen = false
 
 function loadWallet(): Wallet {
@@ -158,26 +157,44 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (ch) => entities[ch] ?? ch)
 }
 
+// --- CrazyGames account -----------------------------------------------------
+interface CgAccount { available: boolean; username: string | null; pictureUrl: string | null }
+let cgAccount: CgAccount = { available: false, username: null, pictureUrl: null }
+
+// The player's face: their CrazyGames profile picture when signed in,
+// otherwise the character avatar they picked.
+function playerAvatarMarkup(size: number): string {
+  if (cgAccount.pictureUrl) return `<img class="cg-avatar-img" src="${escapeHtml(cgAccount.pictureUrl)}" width="${size}" height="${size}" alt="">`
+  const c = myAvatar()
+  return createPlayerAvatarSVG(c.seed, c.style, size)
+}
+
+function recordLine(): string {
+  return stats.played > 0 ? `Won ${stats.won} of ${stats.played} matches${stats.best > 1 ? ` · Best streak ${stats.best}` : ''}${stats.kapothis > 0 ? ` · Kapothis ${stats.kapothis}` : ''}` : 'New player — welcome to the table!'
+}
+
 // CrazyGames Data module hydration: when the platform module adopts
-// account-backed progress, reload the in-memory state and refresh the home
-// screen if it is showing.
+// account-backed progress, reload the in-memory state and repaint the home
+// screen in place (never a full refresh).
 window.addEventListener('omi:cloud-hydrated', () => {
   stats = loadStats()
   wallet = loadWallet()
   profile = loadProfile()
   coachPending = loadCoachPending()
-  if (app.querySelector('.splash')) showSplash(rulesOpen)
+  paintHomeUI()
 })
 
-// A signed-in CrazyGames player's username becomes their profile name,
-// unless they have already chosen a name themselves.
-window.addEventListener('omi:cg-user', (event) => {
-  const username = (event as CustomEvent<string>).detail
-  if (username && !profile.nameCustomized) {
-    profile = { ...profile, name: username.slice(0, 16) }
+// CrazyGames account state: a signed-in player's username becomes their
+// profile name (unless they chose one themselves) and their picture
+// becomes the avatar, following the platform's account guidance.
+window.addEventListener('omi:cg-account', (event) => {
+  const detail = (event as CustomEvent<{ available: boolean; username: string | null; pictureUrl: string | null }>).detail
+  cgAccount = { available: !!detail.available, username: detail.username ?? null, pictureUrl: detail.pictureUrl ?? null }
+  if (cgAccount.username && !profile.nameCustomized) {
+    profile = { ...profile, name: cgAccount.username.slice(0, 20) }
     saveProfile()
-    if (app.querySelector('.splash')) showSplash(rulesOpen)
   }
+  paintHomeUI()
 })
 const app = document.querySelector<HTMLDivElement>('#app')!
 
@@ -237,10 +254,10 @@ function render(): void {
     return `<div class="played-card seat-${played.player} ${fresh} ${win}" aria-label="${playerName(played.player)} played ${played.card.rank} of ${suitNames[played.card.suit]}">${cardFaceSVG(played.card)}</div>`
   }).join('')
   animatedPlays = trick.length
-  const trickScoreMarkup = `<div class="trick-score"><span><b>You + ${playerName(2)}</b><strong class="${scoreBump ? 'bump' : ''}">${tricksWon.northSouth}</strong></span><span><b>${playerName(1)} + ${playerName(3)}</b><strong class="${scoreBump ? 'bump' : ''}">${tricksWon.eastWest}</strong></span></div>`
+  const trickScoreMarkup = `<div class="trick-score"><span><b>We</b><strong class="${scoreBump ? 'bump' : ''}">${tricksWon.northSouth}</strong></span><span><b>Them</b><strong class="${scoreBump ? 'bump' : ''}">${tricksWon.eastWest}</strong></span></div>`
   app.innerHTML = `<main class="game-shell">
-    <header class="topbar"><div class="brand-lockup"><img class="brand-logo" src="${logoUrl}" alt="Omi" width="64" height="64"><div><p class="eyebrow">TRICK-TAKER</p><h1>Omi</h1></div></div><div class="match-meta"><span class="round-label">ROUND ${String(roundNumber).padStart(2, '0')}</span><span class="match-score">You <strong>${tokens.northSouth}</strong> : <strong>${tokens.eastWest}</strong> Rivals</span></div><div class="topbar-actions"><span class="wallet-chip inline">🪙 ${wallet.coins} · 💎 ${wallet.gems}</span><div class="round-label">TRUMP CALLER · ${playerName(trumpCaller).toUpperCase()}</div><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><button class="rules-button" type="button" data-action="rules" aria-expanded="${rulesOpen}">Rules</button><button class="new-game-button" type="button" data-action="new-game">New game</button></div></header>
-    ${roundFinished || matchOver ? `<div class="result-banner ${matchOver ? 'match' : ''}"><strong>${message}</strong></div>` : ''}${coachMarkup}<section class="table" aria-label="Omi game table">${tableSVG()}<div class="table-glow"></div>${opponentMarkup(2, 'top')}${opponentMarkup(3, 'left')}${opponentMarkup(1, 'right')}<div class="trick-zone">${trickMarkup}</div>${trickScoreMarkup}${roundFinished || matchOver ? `<button class="primary-button table-continue" type="button" data-action="continue">${matchOver ? 'New game' : 'Continue'} <span>↗</span></button>` : ''}<div class="trump-panel"><span class="panel-label">TRUMP</span><strong>${trumpLabel}</strong><span class="carry-dot"></span></div><div class="player-panel"><div class="player-name ${currentPlayer === 0 && trumpSuit && !roundFinished ? 'active' : ''}"><span class="avatar">${createPlayerAvatarSVG(myAvatar().seed, myAvatar().style, 38)}</span><strong>${escapeHtml(profile.name)}</strong></div><div class="hand">${sortedHand(hands[0] ?? []).map(cardMarkup).join('')}</div></div></section>
+    <header class="topbar"><div class="brand-lockup"><img class="brand-logo" src="${logoUrl}" alt="Omi" width="64" height="64"><div><p class="eyebrow">TRICK-TAKER</p><h1>Omi</h1></div></div><div class="match-meta"><span class="round-label">ROUND ${String(roundNumber).padStart(2, '0')}</span><span class="match-score">You <strong>${tokens.northSouth}</strong> : <strong>${tokens.eastWest}</strong> Rivals</span></div><div class="topbar-actions"><span class="wallet-chip inline">🪙 ${wallet.coins} · 💎 ${wallet.gems}</span><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><button class="rules-button" type="button" data-action="rules" aria-expanded="${rulesOpen}">Rules</button><button class="new-game-button" type="button" data-action="new-game">New game</button></div></header>
+    ${roundFinished || matchOver ? `<div class="result-banner ${matchOver ? 'match' : ''}"><strong>${message}</strong></div>` : ''}${coachMarkup}<section class="table" aria-label="Omi game table">${tableSVG()}<div class="table-glow"></div>${opponentMarkup(2, 'top')}${opponentMarkup(3, 'left')}${opponentMarkup(1, 'right')}<div class="trick-zone">${trickMarkup}</div>${trickScoreMarkup}${roundFinished || matchOver ? `<button class="primary-button table-continue" type="button" data-action="continue">${matchOver ? 'New game' : 'Continue'} <span>↗</span></button>` : ''}<div class="trump-panel"><span class="panel-label">TRUMP</span><strong>${trumpLabel}</strong><span class="carry-dot"></span></div><div class="player-panel"><div class="player-name ${currentPlayer === 0 && trumpSuit && !roundFinished ? 'active' : ''}"><span class="avatar">${playerAvatarMarkup(38)}</span><strong>${escapeHtml(profile.name)}</strong></div><div class="hand">${sortedHand(hands[0] ?? []).map(cardMarkup).join('')}</div></div></section>
     <section class="action-panel"><div class="action-copy"><span class="status-dot"></span><div><strong>${matchOver ? message : roundFinished ? message : trumpSuit ? (currentPlayer === 0 ? 'Your turn' : message) : (trumpCaller === 0 ? 'Choose your trump' : `${playerName(trumpCaller)} chooses trump`)}</strong><span>${matchOver ? 'Start a new match when you are ready.' : roundFinished ? 'The round is complete.' : trumpSuit ? `${trick.length}/4 cards in trick · ${legalHint}` : partialDeal ? 'Only the first four cards are dealt.' : 'Preparing the hand.'}</span></div></div><div class="suit-picker">${(['clubs', 'diamonds', 'hearts', 'spades'] as Suit[]).map((suit) => `<button class="suit-button ${trumpSuit === suit ? 'active' : ''}${suit === 'hearts' || suit === 'diamonds' ? ' suit-red' : ''}" data-suit="${suit}" type="button" ${trumpSuit || trumpCaller !== 0 || matchOver || roundFinished ? 'disabled' : ''}>${suitIconSVG(suit, 20)}${suitNames[suit]}</button>`).join('')}</div>${showHintButton ? '<button class="hint-button" type="button" data-action="hint">💡 Hint</button>' : ''}</section><p class="footer-note">FIRST TO 10 TOKENS WINS <span>•</span> KAPOTHI AWARDS 2${stats.played > 0 ? ` <span>•</span> MATCHES WON ${stats.won}/${stats.played}` : ''}</p>${rulesOpen ? rulesMarkup() : ''}${rewardPopup ? rewardPopupMarkup() : ''}</main>`
   dealAnim = false
   scoreBump = false
@@ -481,54 +498,118 @@ if (import.meta.env.MODE === 'gamedistribution') {
   void initializeCrazyGames()
 }
 
+function openRules(): void {
+  const splash = app.querySelector('.splash')
+  if (!splash || splash.querySelector('.rules-backdrop')) return
+  splash.insertAdjacentHTML('beforeend', rulesMarkup())
+}
+
+// Repaint the home screen's dynamic pieces (profile, wallet, daily bonus,
+// login) in place — clicking around the home screen never rebuilds it, so
+// nothing flashes or restarts its animations.
+function paintHomeUI(): void {
+  const splash = app.querySelector('.splash')
+  if (!splash) return
+  splash.querySelectorAll<HTMLElement>('.paint-avatar').forEach((el) => { el.innerHTML = playerAvatarMarkup(Number(el.dataset.size ?? 40)) })
+  splash.querySelectorAll<HTMLElement>('.paint-name').forEach((el) => { el.textContent = profile.name })
+  const walletEl = splash.querySelector('.paint-wallet')
+  if (walletEl) walletEl.innerHTML = `<span class="wallet-chip">🪙 ${wallet.coins}</span><span class="wallet-chip gem">💎 ${wallet.gems}</span>`
+  const dailyEl = splash.querySelector('.paint-daily')
+  if (dailyEl) dailyEl.innerHTML = dailyAvailable() ? `<button class="daily-button" type="button" data-action="daily">🎁 Daily bonus · Claim +${DAILY_COINS} 🪙</button>` : `<p class="daily-done">🎁 Daily bonus claimed — come back tomorrow</p>`
+  const entryEl = splash.querySelector('.paint-entry')
+  if (entryEl) entryEl.textContent = wallet.coins >= ENTRY_FEE ? `Entry ${ENTRY_FEE} 🪙 · Win the match +${WIN_COINS} 🪙 +${WIN_GEMS} 💎` : `Not enough coins — this match is free · Win +${WIN_COINS} 🪙 +${WIN_GEMS} 💎`
+  const loginEl = splash.querySelector('.paint-login')
+  if (loginEl) loginEl.innerHTML = cgAccount.available && !cgAccount.username ? `<button class="cg-login-button" type="button" data-action="cg-login">Login with CrazyGames</button>` : ''
+  const recordEl = splash.querySelector('.paint-record')
+  if (recordEl) recordEl.textContent = recordLine()
+  const nameBlock = splash.querySelector('.paint-name-block')
+  if (nameBlock) {
+    nameBlock.innerHTML = nameEditOpen
+      ? `<div class="name-editor"><input id="profile-name-input" type="text" maxlength="16" value="${escapeHtml(profile.name)}" aria-label="Your name"><button type="button" data-action="save-name">Save</button></div>`
+      : `<div class="profile-name-row panel-name"><strong>${escapeHtml(profile.name)}</strong>${cgAccount.username ? '' : '<button class="icon-button" type="button" data-action="edit-name" aria-label="Edit your name">✎</button>'}</div>${cgAccount.username ? '<p class="account-note">CrazyGames account</p>' : ''}`
+  }
+  const accountEl = splash.querySelector('.paint-account')
+  if (accountEl) {
+    accountEl.innerHTML = cgAccount.username
+      ? `<p class="account-status">✓ Logged in as <strong>${escapeHtml(cgAccount.username)}</strong></p><p class="account-note">Your coins, gems and record save to your CrazyGames account.</p>`
+      : cgAccount.available
+        ? `<button class="cg-login-button wide" type="button" data-action="cg-login">Login with CrazyGames</button><p class="account-note">Login to save your coins, gems and record to your account — on every device.</p>`
+        : `<p class="account-note">Playing as guest — progress saves on this device.</p>`
+  }
+  splash.querySelectorAll<HTMLButtonElement>('[data-avatar]').forEach((button) => button.classList.toggle('selected', Number(button.dataset.avatar ?? -1) === profile.avatar))
+}
+
 function showSplash(showRules = false): void {
   const suits = (['spades', 'hearts', 'clubs', 'diamonds'] as Suit[]).map((suit, i) => `<span class="splash-suit s${i}">${suitIconSVG(suit, 40)}</span>`).join('')
-  const choice = myAvatar()
-  const recordLine = stats.played > 0 ? `Won ${stats.won} of ${stats.played} matches${stats.best > 1 ? ` · Best streak ${stats.best}` : ''}${stats.kapothis > 0 ? ` · Kapothis ${stats.kapothis}` : ''}` : 'New player — welcome to the table!'
-  const profileCard = `<section class="profile-card"><button class="profile-avatar" type="button" data-action="avatars" title="Choose your avatar">${createPlayerAvatarSVG(choice.seed, choice.style, 54)}</button><div class="profile-main"><div class="profile-name-row"><strong>${escapeHtml(profile.name)}</strong><button class="icon-button" type="button" data-action="edit-name" aria-label="Edit your name">✎</button></div><p class="profile-record">${recordLine}</p></div><div class="wallet"><span class="wallet-chip">🪙 ${wallet.coins}</span><span class="wallet-chip gem">💎 ${wallet.gems}</span></div></section>`
-  const picker = avatarPickerOpen ? `<div class="avatar-picker" role="group" aria-label="Choose your avatar">${AVATAR_CHOICES.map((c, i) => `<button type="button" class="avatar-choice ${i === profile.avatar ? 'selected' : ''}" data-avatar="${i}" aria-label="Avatar ${i + 1}">${createPlayerAvatarSVG(c.seed, c.style, 50)}</button>`).join('')}</div>` : ''
-  const nameEditor = nameEditOpen ? `<div class="name-editor"><input id="profile-name-input" type="text" maxlength="16" value="${escapeHtml(profile.name)}" aria-label="Your name"><button type="button" data-action="save-name">Save</button></div>` : ''
-  const daily = dailyAvailable() ? `<button class="daily-button" type="button" data-action="daily">🎁 Daily bonus · Claim +${DAILY_COINS} 🪙</button>` : `<p class="daily-done">🎁 Daily bonus claimed — come back tomorrow</p>`
-  const entryNote = wallet.coins >= ENTRY_FEE ? `Entry ${ENTRY_FEE} 🪙 · Win the match +${WIN_COINS} 🪙 +${WIN_GEMS} 💎` : `Not enough coins — this match is free · Win +${WIN_COINS} 🪙 +${WIN_GEMS} 💎`
-  app.innerHTML = `<main class="splash">${suits}<button class="new-game-button splash-sound" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><div class="splash-inner"><img class="splash-logo" src="${logoUrl}" alt="Omi"><p class="splash-tag">The Sri Lankan trick-taking classic</p>${profileCard}${picker}${nameEditor}${daily}<button class="play-button" type="button" data-action="play">Play match</button><p class="entry-note">${entryNote}</p><button class="splash-rules" type="button" data-action="how">How to play</button><p class="splash-foot">4 players · 2 teams · First to 10 tokens</p></div>${showRules ? rulesMarkup() : ''}</main>`
-  app.querySelector('[data-action="play"]')?.addEventListener('click', () => {
-    soundManager.play('click')
-    soundManager.startMusic()
-    void gdAdBreak('preroll').then(() => {
-      app.querySelector('.splash')?.classList.add('leaving')
-      window.setTimeout(newMatch, 450)
-    })
+  nameEditOpen = false
+  app.innerHTML = `<main class="splash">${suits}<div class="splash-top"><button class="profile-chip" type="button" data-action="profile"><span class="paint-avatar" data-size="40"></span><span class="paint-name chip-name"></span></button><div class="splash-top-right"><span class="paint-login"></span><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button></div></div><div class="splash-inner"><img class="splash-logo" src="${logoUrl}" alt="Omi"><p class="splash-tag">The Sri Lankan trick-taking classic</p><div class="wallet-row paint-wallet"></div><div class="paint-daily"></div><button class="play-button" type="button" data-action="play">Play match</button><p class="entry-note paint-entry"></p><button class="splash-rules" type="button" data-action="how">How to play</button><p class="splash-foot">4 players · 2 teams · First to 10 tokens</p></div><div class="profile-backdrop" data-panel hidden><section class="profile-panel" role="dialog" aria-label="Your profile"><button class="panel-close" type="button" data-action="close-profile" aria-label="Close profile">✕</button><div class="panel-avatar paint-avatar" data-size="76"></div><div class="paint-name-block"></div><p class="profile-record paint-record"></p><p class="picker-label">Choose your avatar — it's free</p><div class="avatar-picker" role="group" aria-label="Choose your avatar">${AVATAR_CHOICES.map((c, i) => `<button type="button" class="avatar-choice" data-avatar="${i}" aria-label="Avatar ${i + 1}">${createPlayerAvatarSVG(c.seed, c.style, 50)}</button>`).join('')}</div><div class="paint-account account-box"></div></section></div></main>`
+  const splash = app.querySelector('.splash')
+  splash?.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement
+    if (target.hasAttribute('data-panel')) {
+      target.hidden = true
+      return
+    }
+    const avatarButton = target.closest<HTMLButtonElement>('[data-avatar]')
+    if (avatarButton) {
+      profile.avatar = Number(avatarButton.dataset.avatar ?? 0)
+      saveProfile()
+      soundManager.play('click')
+      paintHomeUI()
+      return
+    }
+    const el = target.closest<HTMLElement>('[data-action]')
+    if (!el) return
+    const action = el.dataset.action
+    if (action === 'play') {
+      soundManager.play('click')
+      soundManager.startMusic()
+      void gdAdBreak('preroll').then(() => {
+        splash.classList.add('leaving')
+        window.setTimeout(newMatch, 450)
+      })
+    } else if (action === 'profile') {
+      const panel = splash.querySelector<HTMLElement>('[data-panel]')
+      if (panel) panel.hidden = false
+      soundManager.play('click')
+    } else if (action === 'close-profile') {
+      const panel = splash.querySelector<HTMLElement>('[data-panel]')
+      if (panel) panel.hidden = true
+    } else if (action === 'daily') {
+      if (!dailyAvailable()) return
+      wallet.coins += DAILY_COINS
+      wallet.lastDaily = todayKey()
+      saveWallet()
+      soundManager.play('score')
+      paintHomeUI()
+    } else if (action === 'cg-login') {
+      soundManager.play('click')
+      void loginWithCrazyGames()
+    } else if (action === 'edit-name') {
+      nameEditOpen = true
+      paintHomeUI()
+      splash.querySelector<HTMLInputElement>('#profile-name-input')?.focus()
+    } else if (action === 'save-name') {
+      const input = splash.querySelector<HTMLInputElement>('#profile-name-input')
+      const value = (input?.value ?? '').trim().slice(0, 16)
+      profile.name = value || 'Player'
+      profile.nameCustomized = true
+      saveProfile()
+      nameEditOpen = false
+      soundManager.play('click')
+      paintHomeUI()
+    } else if (action === 'sound') {
+      soundManager.toggleMute()
+      el.setAttribute('aria-pressed', String(soundManager.muted))
+      el.textContent = soundManager.muted ? '🔇 Muted' : '🔊 Sound'
+    } else if (action === 'how') {
+      openRules()
+    } else if (action === 'close-rules') {
+      if (event.target === el || el.hasAttribute('data-rules-panel')) el.closest('.rules-backdrop')?.remove()
+    }
   })
-  app.querySelector('[data-action="how"]')?.addEventListener('click', () => showSplash(true))
-  app.querySelector('[data-action="daily"]')?.addEventListener('click', () => {
-    if (!dailyAvailable()) return
-    wallet.coins += DAILY_COINS
-    wallet.lastDaily = todayKey()
-    saveWallet()
-    soundManager.play('score')
-    showSplash(showRules)
-  })
-  app.querySelector('[data-action="avatars"]')?.addEventListener('click', () => { avatarPickerOpen = !avatarPickerOpen; soundManager.play('click'); showSplash(showRules) })
-  app.querySelectorAll<HTMLButtonElement>('[data-avatar]').forEach((button) => button.addEventListener('click', () => {
-    profile.avatar = Number(button.dataset.avatar ?? 0)
-    saveProfile()
-    avatarPickerOpen = false
-    soundManager.play('click')
-    showSplash(showRules)
-  }))
-  app.querySelector('[data-action="edit-name"]')?.addEventListener('click', () => { nameEditOpen = true; showSplash(showRules); app.querySelector<HTMLInputElement>('#profile-name-input')?.focus() })
-  app.querySelector('[data-action="save-name"]')?.addEventListener('click', () => {
-    const input = app.querySelector<HTMLInputElement>('#profile-name-input')
-    const value = (input?.value ?? '').trim().slice(0, 16)
-    profile.name = value || 'Player'
-    profile.nameCustomized = true
-    saveProfile()
-    nameEditOpen = false
-    soundManager.play('click')
-    showSplash(showRules)
-  })
-  app.querySelector('[data-action="sound"]')?.addEventListener('click', () => { soundManager.toggleMute(); showSplash(showRules) })
-  app.querySelectorAll<HTMLElement>('[data-action="close-rules"]').forEach((element) => element.addEventListener('click', (event) => { if (event.target === element || element.hasAttribute('data-rules-panel')) showSplash(false) }))
+  paintHomeUI()
+  if (showRules) openRules()
 }
 
 function rewardPopupMarkup(): string {
