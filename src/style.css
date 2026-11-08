@@ -602,3 +602,31 @@ body { height: 100dvh; overflow: hidden; }
   .splash-logo { width: min(240px, 30vh); }
   .splash-inner { gap: 10px; }
 }
+
+/* Quality polish pass (2026-11-08 evening): designed seat pods, token pips.
+   Seats were floating elements (avatar + name pill + fan over bare felt);
+   now each seat is one unit — dark glass pod, hairline gold border, soft
+   shadow — and the active seat's pod lights up gold. Same for the player's
+   own name plate. Token progress reads as pips under the topbar score. */
+.opponent { padding: 5px 12px 5px 5px; border: 1px solid #d4af3733; border-radius: 999px; background: #03120cd9; box-shadow: 0 10px 24px #0009; }
+.opponent.is-turn { border-color: #d4af37; box-shadow: 0 0 0 1px #d4af3766, 0 0 18px #d4af374d, 0 10px 24px #0009; }
+.player-name { padding: 4px 12px 4px 4px; border: 1px solid #d4af3733; border-radius: 999px; background: #03120cd9; box-shadow: 0 10px 24px #0009; }
+.player-name.active { border-color: #d4af37; box-shadow: 0 0 0 1px #d4af3766, 0 0 18px #d4af374d, 0 10px 24px #0009; }
+.pips { display: inline-flex; gap: 2.5px; margin: 0 7px; vertical-align: middle; }
+.pips i { width: 6px; height: 6px; border-radius: 50%; background: #ffffff26; }
+.pips i.on { background: #e8ba63; box-shadow: 0 0 5px #d4af3799; }
+@media (max-width: 760px) {
+  .opponent-left, .opponent-right { padding: 6px 2px; border-radius: 18px; }
+}
+/* Polish follow-up: the player-name container is full-width, so its pod
+   background stretched into a bar — size it to its content and centre it.
+   Side seats move inward so their pods sit fully on the felt. */
+.player-name { width: fit-content; margin-inline: auto; align-self: center; }
+.opponent-left { left: 44px; }
+.opponent-right { right: 44px; }
+@media (max-width: 760px) {
+  .opponent-left { left: 2px; }
+  .opponent-right { right: 2px; }
+}
+/* Seat name block: centre the role label under the name pill. */
+.opponent > div { text-align: center; }

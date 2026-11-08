@@ -113,6 +113,7 @@ export function tableSVG(): string {
         <stop offset="0" stop-color="#f3dc82"/><stop offset=".5" stop-color="#d4af37"/><stop offset="1" stop-color="#8c6c1d"/>
       </linearGradient>
       <radialGradient id="spot" cx="50%" cy="45%" r="45%"><stop offset="0" stop-color="#fff6d8" stop-opacity=".16"/><stop offset="1" stop-color="#fff6d8" stop-opacity="0"/></radialGradient>
+      <filter id="feltNoise" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.06 0"/><feComposite operator="in" in2="SourceGraphic"/></filter>
     </defs>
     <rect width="1000" height="620" fill="#051a15"/>
     <rect x="10" y="10" width="980" height="600" rx="300" fill="url(#rail)"/>
@@ -121,11 +122,12 @@ export function tableSVG(): string {
     <rect x="40" y="40" width="920" height="540" rx="270" fill="url(#felt)"/>
     <rect x="40" y="40" width="920" height="540" rx="270" fill="none" stroke="#000" stroke-opacity=".28" stroke-width="22"/>
     <rect x="40" y="40" width="920" height="540" fill="url(#spot)"/>
+    <rect x="40" y="40" width="920" height="540" rx="270" filter="url(#feltNoise)"/>
     <rect x="64" y="64" width="872" height="492" rx="246" fill="none" stroke="#d4af37" stroke-width="1.4" stroke-dasharray="1 8" stroke-linecap="round" opacity=".6"/>
     <ellipse cx="500" cy="300" rx="180" ry="116" fill="none" stroke="url(#brass)" stroke-width="1.5" opacity=".35"/>
-    <ellipse cx="500" cy="300" rx="128" ry="80" fill="#000" fill-opacity=".12" stroke="#d4af37" stroke-width="1" opacity=".5"/>
+    <ellipse cx="500" cy="300" rx="128" ry="80" fill="#000" fill-opacity=".15" stroke="#d4af37" stroke-width="1" opacity=".5"/>
     ${[0, 90, 180, 270].map((r) => `<path d="M500 176 l6 8 -6 8 -6 -8z" fill="#d4af37" opacity=".6" transform="rotate(${r} 500 300) "/>`).join('')}
-    <g opacity=".07">${suitGlyph('spades', 410, 300, 34, '#fff')}${suitGlyph('hearts', 470, 300, 34, '#fff')}${suitGlyph('clubs', 530, 300, 34, '#fff')}${suitGlyph('diamonds', 590, 300, 34, '#fff')}</g>
+    <g opacity=".11">${suitGlyph('spades', 410, 300, 34, '#fff')}${suitGlyph('hearts', 470, 300, 34, '#fff')}${suitGlyph('clubs', 530, 300, 34, '#fff')}${suitGlyph('diamonds', 590, 300, 34, '#fff')}</g>
   </svg>`
 }
 
