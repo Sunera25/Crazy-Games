@@ -5,7 +5,7 @@
 # base64-encoded logo in scripts/omi-logo.b64.txt.
 set -e
 cd "$(dirname "$0")/.."
-LOGO=$(mktemp --suffix=.png)
+LOGO="${TMPDIR:-/tmp}/omi-logo.png"
 base64 -d scripts/omi-logo.b64.txt > "$LOGO"
 RES=android/app/src/main/res
 
