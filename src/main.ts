@@ -39,6 +39,7 @@ let rulesOpen = false
 let dealAnim = false
 let animatedPlays = 0
 let trickWinnerSeat: number | null = null
+let lastTrickSummary: string | null = null
 let trickClosing = false
 let scoreBump = false
 let rewardPopup: 'hint' | 'second-chance' | null = null
@@ -398,7 +399,20 @@ function cardMarkup(card: Card, index: number): string {
   const selected = selectedCard?.suit === card.suit && selectedCard.rank === card.rank
   const hinted = hintCard?.suit === card.suit && hintCard?.rank === card.rank
   const colorClass = card.suit === 'hearts' || card.suit === 'diamonds' ? 'red' : ''
-  return `<button class="card ${colorClass} ${legal ? 'legal' : 'muted'} ${selected ? 'selected' : ''} ${hinted ? 'hint-glow' : ''} ${dealAnim ? 'dealing' : ''}" style="--i:${index}" data-card-index="${index}" ${legal ? '' : 'disabled'} aria-label="${card.rank} of ${suitNames[card.suit]}">${cardFaceSVG(card)}</button>`
+  const isTrump = !!trumpSuit && card.suit === trumpSuit
+  const hasLeadSuit = !!leadSuit && hands[0].some((c) => c.suit === leadSuit)
+  const isVoidInLead = !!leadSuit && !hasLeadSuit
+
+  let coachCueClass = ''
+  if (coachPending && currentPlayer === 0 && legal && !roundFinished) {
+    if (isVoidInLead && isTrump) {
+      coachCueClass = 'coach-trump-cue'
+    } else {
+      coachCueClass = 'coach-card-cue'
+    }
+  }
+
+  return `<button class="card ${colorClass} ${legal ? 'legal' : 'muted'} ${selected ? 'selected' : ''} ${hinted ? 'hint-glow' : ''} ${coachCueClass} ${dealAnim ? 'dealing' : ''}" style="--i:${index}" data-card-index="${index}" ${legal ? '' : 'disabled'} aria-label="${card.rank} of ${suitNames[card.suit]}">${cardFaceSVG(card)}</button>`
 }
 
 function sortedHand(hand: readonly Card[]): Card[] {
@@ -412,15 +426,71 @@ function sortedHand(hand: readonly Card[]): Card[] {
 function render(): void {
   const trumpLabel = trumpSuit ? `${suitSymbols[trumpSuit]} ${suitNames[trumpSuit]}` : 'Choose a trump suit'
   const showHintButton = !!trumpSuit && currentPlayer === 0 && !roundFinished && !matchOver && !trickClosing && !hintUsedThisRound && !rewardPopup
-  const coachText = !coachPending || rewardPopup || rulesOpen || roundFinished || matchOver ? '' :
-    !trumpSuit && trumpCaller === 0
-      ? 'First, choose your trump suit — pick the suit where your cards are strongest.'
-      : trumpSuit && currentPlayer === 0
-        ? trick.length === 0
-          ? 'Your lead — tap any card to play it. The highest card of the led suit wins the trick, unless someone trumps in.'
-          : 'Follow the led suit if you can — your playable cards are the bright ones.'
-        : ''
-  const coachMarkup = coachText ? `<div class="coach-tip"><span>💡 ${coachText}</span><button type="button" data-action="coach-skip">Skip tips</button></div>` : ''
+  const suggestedTrumpSuit = (!trumpSuit && trumpCaller === 0 && (hands[0]?.length ?? 0) > 0) ? chooseTrump(hands[0]) : null
+
+  let coachStep: number | null = null
+  let coachTitle = ''
+  let coachText = ''
+
+  if (coachPending && !rewardPopup && !rulesOpen) {
+    if (!trumpSuit && trumpCaller === 0) {
+      coachStep = 1
+      coachTitle = 'Choose Your Trump Suit'
+      coachText = `Select your strongest suit from your first 4 cards. Trump cards beat every other suit in the game! We suggest <strong>${suggestedTrumpSuit ? `${suitSymbols[suggestedTrumpSuit]} ${suitNames[suggestedTrumpSuit]}` : ''}</strong>.`
+    } else if (!trumpSuit && trumpCaller !== 0) {
+      coachStep = 1
+      coachTitle = 'Trump Selection'
+      coachText = `${playerName(trumpCaller)} is choosing the trump suit for this round...`
+    } else if (trickClosing && lastTrickSummary) {
+      coachStep = 3
+      coachTitle = 'Trick Winner Decided'
+      coachText = `🏆 ${lastTrickSummary}. The trick winner leads the next trick.`
+    } else if (roundFinished) {
+      coachStep = 3
+      coachTitle = 'Round Complete — Scoring Tokens'
+      coachText = `Round finished! The team with 5 or more tricks wins match tokens. First team to 10 tokens wins the match!`
+    } else if (matchOver) {
+      coachStep = 3
+      coachTitle = 'Match Finished'
+      coachText = message
+    } else if (currentPlayer === 0) {
+      if (trick.length === 0) {
+        coachStep = 2
+        coachTitle = 'Lead a Trick'
+        coachText = `Your turn to lead! Tap any card to start the trick. All other players must follow this suit if they have it.`
+      } else {
+        coachStep = 2
+        const hasLeadSuit = leadSuit ? hands[0].some((c) => c.suit === leadSuit) : false
+        if (hasLeadSuit) {
+          coachTitle = `Follow Suit (${suitNames[leadSuit!]})`
+          coachText = `You must follow the led suit (<strong>${suitSymbols[leadSuit!]} ${suitNames[leadSuit!]}</strong>)! Playable cards are pulsing with a gold border.`
+        } else {
+          coachTitle = `Void in ${suitNames[leadSuit!]}! (Trump Opportunity)`
+          const hasTrump = trumpSuit ? hands[0].some((c) => c.suit === trumpSuit) : false
+          coachText = hasTrump
+            ? `You have no ${suitNames[leadSuit!]} cards! Play a <strong>Trump (${suitSymbols[trumpSuit!]} ${suitNames[trumpSuit!]})</strong> card to cut and win, or discard any other card.`
+            : `You have no ${suitNames[leadSuit!]} cards! You can safely discard any card.`
+        }
+      }
+    } else {
+      coachStep = 2
+      coachTitle = 'Trick in Progress'
+      coachText = `${playerName(currentPlayer)} is playing... Watch which card wins the trick.`
+    }
+  }
+
+  const coachMarkup = coachPending && coachTitle ? `
+    <div class="coach-banner" role="region" aria-label="First-match tutorial">
+      <div class="coach-pill-badge">${coachStep ? `STEP ${coachStep}/3` : 'COACH'}</div>
+      <div class="coach-content">
+        <div class="coach-title">💡 ${coachTitle}</div>
+        <p class="coach-desc">${coachText}</p>
+      </div>
+      <div class="coach-actions">
+        <button type="button" class="coach-btn coach-skip" data-action="coach-skip">Skip guide</button>
+      </div>
+    </div>
+  ` : ''
   const legalHint = leadSuit ? `Follow ${suitSymbols[leadSuit]} ${suitNames[leadSuit]}` : 'Lead any card to begin'
   const trickMarkup = trick.map((played, i) => {
     const fresh = i >= animatedPlays ? 'fresh' : ''
@@ -432,7 +502,10 @@ function render(): void {
   app.innerHTML = `<main class="game-shell">
     <header class="topbar"><div class="brand-lockup"><img class="brand-logo" src="${logoUrl}" alt="Omi" width="64" height="64"><div><p class="eyebrow">TRICK-TAKER</p><h1>Omi</h1></div></div><div class="match-meta"><span class="round-label">ROUND ${String(roundNumber).padStart(2, '0')}</span><span class="match-score">You <strong>${tokens.northSouth}</strong>${tokenPips(tokens.northSouth)} : ${tokenPips(tokens.eastWest)}<strong>${tokens.eastWest}</strong> Rivals</span></div><div class="topbar-actions"><span class="wallet-chip inline">🪙 ${wallet.coins}</span><button class="new-game-button" type="button" data-action="home">🏠 Home</button><button class="new-game-button" type="button" data-action="sound" aria-pressed="${soundManager.muted}">${soundManager.muted ? '🔇 Muted' : '🔊 Sound'}</button><button class="rules-button" type="button" data-action="rules" aria-expanded="${rulesOpen}">Rules</button><button class="new-game-button" type="button" data-action="new-game">New game</button></div></header>
     ${roundFinished || matchOver ? `<div class="result-banner ${matchOver ? 'match' : ''}"><strong>${message}</strong></div>` : ''}${coachMarkup}<section class="table" aria-label="Omi game table">${tableSVG()}<div class="table-glow"></div>${opponentMarkup(2, 'top')}${opponentMarkup(3, 'left')}${opponentMarkup(1, 'right')}<div class="trick-zone">${trickMarkup}</div>${trickScoreMarkup}${roundFinished || matchOver ? `<button class="primary-button table-continue" type="button" data-action="continue">${matchOver ? 'New game' : 'Continue'} <span>↗</span></button>` : ''}<div class="trump-panel"><span class="panel-label">TRUMP</span><strong>${trumpLabel}</strong><span class="carry-dot"></span></div><div class="player-panel"><div class="player-name ${currentPlayer === 0 && trumpSuit && !roundFinished ? 'active' : ''}"><span class="avatar">${playerAvatarMarkup(38)}</span><strong>${escapeHtml(profile.name)}</strong></div><div class="hand">${sortedHand(hands[0] ?? []).map(cardMarkup).join('')}</div></div></section>
-    <section class="action-panel"><div class="action-copy"><span class="status-dot"></span><div><strong>${matchOver ? message : roundFinished ? message : trumpSuit ? (currentPlayer === 0 ? 'Your turn' : message) : (trumpCaller === 0 ? 'Choose your trump' : `${playerName(trumpCaller)} chooses trump`)}</strong><span>${matchOver ? 'Start a new match when you are ready.' : roundFinished ? 'The round is complete.' : trumpSuit ? `${trick.length}/4 cards in trick · ${legalHint}` : partialDeal ? 'Only the first four cards are dealt.' : 'Preparing the hand.'}</span></div></div><div class="suit-picker">${(['clubs', 'diamonds', 'hearts', 'spades'] as Suit[]).map((suit) => `<button class="suit-button ${trumpSuit === suit ? 'active' : ''}${suit === 'hearts' || suit === 'diamonds' ? ' suit-red' : ''}" data-suit="${suit}" type="button" ${trumpSuit || trumpCaller !== 0 || matchOver || roundFinished ? 'disabled' : ''}>${suitIconSVG(suit, 20)}${suitNames[suit]}</button>`).join('')}</div>${showHintButton ? '<button class="hint-button" type="button" data-action="hint">💡 Hint</button>' : ''}</section><p class="footer-note">FIRST TO 10 TOKENS WINS <span>•</span> KAPOTHI AWARDS 2${stats.played > 0 ? ` <span>•</span> MATCHES WON ${stats.won}/${stats.played}` : ''}</p>${rulesOpen ? rulesMarkup() : ''}${rewardPopup ? rewardPopupMarkup() : ''}</main>`
+    <section class="action-panel"><div class="action-copy"><span class="status-dot"></span><div><strong>${matchOver ? message : roundFinished ? message : trumpSuit ? (currentPlayer === 0 ? 'Your turn' : message) : (trumpCaller === 0 ? 'Choose your trump' : `${playerName(trumpCaller)} chooses trump`)}</strong><span>${matchOver ? 'Start a new match when you are ready.' : roundFinished ? 'The round is complete.' : trumpSuit ? `${trick.length}/4 cards in trick · ${legalHint}` : partialDeal ? 'Only the first four cards are dealt.' : 'Preparing the hand.'}</span></div></div><div class="suit-picker">${(['clubs', 'diamonds', 'hearts', 'spades'] as Suit[]).map((suit) => {
+      const isSuggested = coachPending && !trumpSuit && trumpCaller === 0 && suggestedTrumpSuit === suit
+      return `<button class="suit-button ${trumpSuit === suit ? 'active' : ''}${suit === 'hearts' || suit === 'diamonds' ? ' suit-red' : ''} ${isSuggested ? 'coach-suggested' : ''}" data-suit="${suit}" type="button" ${trumpSuit || trumpCaller !== 0 || matchOver || roundFinished ? 'disabled' : ''}>${suitIconSVG(suit, 20)}${suitNames[suit]}${isSuggested ? '<span class="coach-tag">Best Pick</span>' : ''}</button>`
+    }).join('')}</div>${showHintButton ? '<button class="hint-button" type="button" data-action="hint">💡 Hint</button>' : ''}</section><p class="footer-note">FIRST TO 10 TOKENS WINS <span>•</span> KAPOTHI AWARDS 2${stats.played > 0 ? ` <span>•</span> MATCHES WON ${stats.won}/${stats.played}` : ''}</p>${rulesOpen ? rulesMarkup() : ''}${rewardPopup ? rewardPopupMarkup() : ''}</main>`
   dealAnim = false
   scoreBump = false
 
@@ -534,7 +607,6 @@ function playCard(player: number, handIndex: number): void {
   const card = hands[player].splice(handIndex, 1)[0]
   if (player === 0) {
     hintCard = null
-    if (coachPending) completeCoach()
   }
   trick.push({ player, card })
   soundManager.play('play')
@@ -560,6 +632,12 @@ function finishTrick(): void {
   const winner = trickWinner(trick, trumpSuit!)
   tricksWon[teamForPlayer(winner.player)] += 1
   currentPlayer = winner.player
+  const ledCard = trick[0].card
+  const isTrumpWin = winner.card.suit === trumpSuit && ledCard.suit !== trumpSuit
+  const winReason = isTrumpWin
+    ? `Trumped with ${winner.card.rank} of ${suitNames[winner.card.suit]} (Trump beats led suit!)`
+    : `Highest ${suitNames[ledCard.suit]} (${winner.card.rank} of ${suitNames[winner.card.suit]})`
+  lastTrickSummary = `${playerName(winner.player)} took the trick: ${winReason}`
   message = `${playerName(winner.player)} won the trick`
   const winnerTeam = teamForPlayer(winner.player)
   const playerTeam = teamForPlayer(0)
@@ -589,6 +667,7 @@ function finishTrick(): void {
 }
 
 function finishRound(): void {
+  if (coachPending) completeCoach()
   const result = scoreRound(tricksWon.northSouth, tricksWon.eastWest, carry, teamForPlayer(trumpCaller))
   carry = result.carry
   const tokensBefore = tokens.northSouth
