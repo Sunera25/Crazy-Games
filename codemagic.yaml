@@ -1,0 +1,37 @@
+# Codemagic build for the Omi Android APK.
+# GitHub Actions is unusable on this account (billing lock), so the APK is
+# built here instead. The output is an UNSIGNED release APK; signing happens
+# afterwards with the project's own keystore (kept outside the repo).
+workflows:
+  android-apk:
+    name: Android APK
+    max_build_duration: 30
+    environment:
+      node: 20
+      java: 21
+    scripts:
+      - name: Install dependencies
+        script: npm ci
+      - name: Build web assets (app mode)
+        script: npm run build:app
+      - name: Sync web assets into the Android project
+        script: npx cap sync android
+      - name: Generate launcher icons and splashes
+        script: |
+          if ! command -v convert >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
+          fi
+          bash scripts/gen-android-res.sh
+      - name: Build release APK (unsigned)
+        script: |
+          set -e
+          if ! gradle -v 2>/dev/null | grep -q "Gradle 8.14"; then
+            curl -sL https://services.gradle.org/distributions/gradle-8.14.3-bin.zip -o /tmp/gradle.zip
+            unzip -q /tmp/gradle.zip -d /tmp
+            export PATH=/tmp/gradle-8.14.3/bin:$PATH
+          fi
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+          cd android
+          gradle assembleRelease --console=plain
+    artifacts:
+      - android/app/build/outputs/apk/release/app-release-unsigned.apk
