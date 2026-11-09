@@ -35,14 +35,15 @@ const crazyGamesSnippet = '<script src="https://sdk.crazygames.com/crazygames-sd
 
 export default defineConfig(({ mode }) => {
   const isGd = mode === 'gamedistribution'
+  const isApp = mode === 'app'
   return {
     base: './',
-    build: { outDir: isGd ? 'dist-gd' : 'dist' },
+    build: { outDir: isGd ? 'dist-gd' : isApp ? 'dist-app' : 'dist' },
     plugins: [
       {
         name: 'platform-sdk',
         transformIndexHtml(html: string) {
-          return html.replace('<!--PLATFORM_SDK-->', isGd ? gdSnippet : crazyGamesSnippet)
+          return html.replace('<!--PLATFORM_SDK-->', isGd ? gdSnippet : isApp ? '' : crazyGamesSnippet)
         }
       }
     ]
