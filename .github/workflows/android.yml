@@ -1,0 +1,51 @@
+name: Build Android APK
+
+# Manual trigger (Actions tab -> Run workflow), or push a tag like apk-v1.0.0.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'apk-v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web assets (app mode)
+        run: npm run build:app
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.14.3
+
+      - name: Sync web assets into the Android project
+        run: npx cap sync android
+
+      - name: Generate launcher icons and splashes
+        run: bash scripts/gen-android-res.sh
+
+      - name: Build release APK (unsigned)
+        working-directory: android
+        run: gradle assembleRelease --console=plain
+
+      - name: Upload unsigned APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: omi-release-unsigned
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
