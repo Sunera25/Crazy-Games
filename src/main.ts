@@ -2,6 +2,7 @@ import './style.css'
 import { createDeck, rankValue, shuffleDeck, type Card, type Suit } from './game/deck.ts'
 import { dealFirstBatch, dealSecondBatch, type PartialDeal } from './game/deal.ts'
 import { chooseCard, chooseTrump } from './game/ai.ts'
+import { completeCoachStorage, formatTrickWinSummary, getCoachCardCue, getCoachStepInfo, loadCoachPending as checkCoachPending } from './game/coach.ts'
 import { isLegalCard, scoreRound, trickWinner, type PlayedCard, type Team, teamForPlayer } from './game/rules.ts'
 import { crazyGamesAdBreak, crazyGamesRewardedAd, gameplayStart, gameplayStop, initializeCrazyGames, loadingStart, loadingStop, loginWithCrazyGames } from './platform/crazygames.ts'
 import { gdAdBreak, gdRewardedAd, initializeGameDistribution } from './platform/gamedistribution.ts'
@@ -68,18 +69,12 @@ function saveStats(): void {
 }
 
 function loadCoachPending(): boolean {
-  try {
-    return storeGet('omi-coach-done') !== '1'
-  } catch {
-    return true
-  }
+  return checkCoachPending(storeGet)
 }
 
 function completeCoach(): void {
   coachPending = false
-  try {
-    storeSet('omi-coach-done', '1')
-  } catch { /* session only */ }
+  completeCoachStorage(storeSet)
 }
 
 function celebrate(): void {
@@ -403,14 +398,14 @@ function cardMarkup(card: Card, index: number): string {
   const hasLeadSuit = !!leadSuit && hands[0].some((c) => c.suit === leadSuit)
   const isVoidInLead = !!leadSuit && !hasLeadSuit
 
-  let coachCueClass = ''
-  if (coachPending && currentPlayer === 0 && legal && !roundFinished) {
-    if (isVoidInLead && isTrump) {
-      coachCueClass = 'coach-trump-cue'
-    } else {
-      coachCueClass = 'coach-card-cue'
-    }
-  }
+  const coachCueClass = getCoachCardCue({
+    coachPending,
+    isPlayerTurn: currentPlayer === 0,
+    isLegal: legal,
+    isVoidInLead,
+    isTrump,
+    roundFinished,
+  })
 
   return `<button class="card ${colorClass} ${legal ? 'legal' : 'muted'} ${selected ? 'selected' : ''} ${hinted ? 'hint-glow' : ''} ${coachCueClass} ${dealAnim ? 'dealing' : ''}" style="--i:${index}" data-card-index="${index}" ${legal ? '' : 'disabled'} aria-label="${card.rank} of ${suitNames[card.suit]}">${cardFaceSVG(card)}</button>`
 }
@@ -426,58 +421,27 @@ function sortedHand(hand: readonly Card[]): Card[] {
 function render(): void {
   const trumpLabel = trumpSuit ? `${suitSymbols[trumpSuit]} ${suitNames[trumpSuit]}` : 'Choose a trump suit'
   const showHintButton = !!trumpSuit && currentPlayer === 0 && !roundFinished && !matchOver && !trickClosing && !hintUsedThisRound && !rewardPopup
-  const suggestedTrumpSuit = (!trumpSuit && trumpCaller === 0 && (hands[0]?.length ?? 0) > 0) ? chooseTrump(hands[0]) : null
-
-  let coachStep: number | null = null
-  let coachTitle = ''
-  let coachText = ''
-
-  if (coachPending && !rewardPopup && !rulesOpen) {
-    if (!trumpSuit && trumpCaller === 0) {
-      coachStep = 1
-      coachTitle = 'Choose Your Trump Suit'
-      coachText = `Select your strongest suit from your first 4 cards. Trump cards beat every other suit in the game! We suggest <strong>${suggestedTrumpSuit ? `${suitSymbols[suggestedTrumpSuit]} ${suitNames[suggestedTrumpSuit]}` : ''}</strong>.`
-    } else if (!trumpSuit && trumpCaller !== 0) {
-      coachStep = 1
-      coachTitle = 'Trump Selection'
-      coachText = `${playerName(trumpCaller)} is choosing the trump suit for this round...`
-    } else if (trickClosing && lastTrickSummary) {
-      coachStep = 3
-      coachTitle = 'Trick Winner Decided'
-      coachText = `🏆 ${lastTrickSummary}. The trick winner leads the next trick.`
-    } else if (roundFinished) {
-      coachStep = 3
-      coachTitle = 'Round Complete — Scoring Tokens'
-      coachText = `Round finished! The team with 5 or more tricks wins match tokens. First team to 10 tokens wins the match!`
-    } else if (matchOver) {
-      coachStep = 3
-      coachTitle = 'Match Finished'
-      coachText = message
-    } else if (currentPlayer === 0) {
-      if (trick.length === 0) {
-        coachStep = 2
-        coachTitle = 'Lead a Trick'
-        coachText = `Your turn to lead! Tap any card to start the trick. All other players must follow this suit if they have it.`
-      } else {
-        coachStep = 2
-        const hasLeadSuit = leadSuit ? hands[0].some((c) => c.suit === leadSuit) : false
-        if (hasLeadSuit) {
-          coachTitle = `Follow Suit (${suitNames[leadSuit!]})`
-          coachText = `You must follow the led suit (<strong>${suitSymbols[leadSuit!]} ${suitNames[leadSuit!]}</strong>)! Playable cards are pulsing with a gold border.`
-        } else {
-          coachTitle = `Void in ${suitNames[leadSuit!]}! (Trump Opportunity)`
-          const hasTrump = trumpSuit ? hands[0].some((c) => c.suit === trumpSuit) : false
-          coachText = hasTrump
-            ? `You have no ${suitNames[leadSuit!]} cards! Play a <strong>Trump (${suitSymbols[trumpSuit!]} ${suitNames[trumpSuit!]})</strong> card to cut and win, or discard any other card.`
-            : `You have no ${suitNames[leadSuit!]} cards! You can safely discard any card.`
-        }
-      }
-    } else {
-      coachStep = 2
-      coachTitle = 'Trick in Progress'
-      coachText = `${playerName(currentPlayer)} is playing... Watch which card wins the trick.`
-    }
-  }
+  const coachInfo = getCoachStepInfo({
+    coachPending,
+    rewardPopup: !!rewardPopup,
+    rulesOpen,
+    trumpSuit,
+    trumpCaller,
+    playerHand: hands[0] ?? [],
+    currentPlayer,
+    leadSuit,
+    trickLength: trick.length,
+    trickClosing,
+    lastTrickSummary,
+    roundFinished,
+    matchOver,
+    matchMessage: message,
+    getPlayerName: playerName,
+  })
+  const suggestedTrumpSuit = coachInfo?.suggestedTrumpSuit ?? null
+  const coachStep = coachInfo?.step ?? null
+  const coachTitle = coachInfo?.title ?? ''
+  const coachText = coachInfo?.text ?? ''
 
   const coachMarkup = coachPending && coachTitle ? `
     <div class="coach-banner" role="region" aria-label="First-match tutorial">
@@ -633,11 +597,7 @@ function finishTrick(): void {
   tricksWon[teamForPlayer(winner.player)] += 1
   currentPlayer = winner.player
   const ledCard = trick[0].card
-  const isTrumpWin = winner.card.suit === trumpSuit && ledCard.suit !== trumpSuit
-  const winReason = isTrumpWin
-    ? `Trumped with ${winner.card.rank} of ${suitNames[winner.card.suit]} (Trump beats led suit!)`
-    : `Highest ${suitNames[ledCard.suit]} (${winner.card.rank} of ${suitNames[winner.card.suit]})`
-  lastTrickSummary = `${playerName(winner.player)} took the trick: ${winReason}`
+  lastTrickSummary = formatTrickWinSummary(winner, ledCard, trumpSuit!, playerName)
   message = `${playerName(winner.player)} won the trick`
   const winnerTeam = teamForPlayer(winner.player)
   const playerTeam = teamForPlayer(0)
