@@ -216,6 +216,7 @@ window.addEventListener('omi:cloud-hydrated', () => {
   profile = loadProfile()
   coachPending = loadCoachPending()
   paintHomeUI()
+  if (app?.querySelector('.table')) render()
 })
 
 // CrazyGames account state: a signed-in player's username becomes their
