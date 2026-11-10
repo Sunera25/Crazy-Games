@@ -24,7 +24,6 @@ enum class Rank(val label: String, val value: Int) {
 
 data class Card(val suit: Suit, val rank: Rank) {
     val id: String get() = "${rank.name}-${suit.name}"
-    val isRed: Boolean get() = suit == Suit.DIAMONDS || suit == Suit.HEARTS
 }
 
 fun createDeck(): List<Card> =
