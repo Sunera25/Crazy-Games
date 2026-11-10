@@ -35,3 +35,32 @@ workflows:
           gradle assembleRelease --console=plain
     artifacts:
       - android/app/build/outputs/apk/release/app-release-unsigned.apk
+  android-native:
+    name: Android Native
+    max_build_duration: 30
+    environment:
+      java: 21
+    scripts:
+      - name: Generate launcher icons
+        script: |
+          if ! command -v convert >/dev/null 2>&1; then
+            (sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick) || brew install imagemagick
+          fi
+          RES_DIR=android-native/app/src/main/res bash scripts/gen-android-res.sh
+      - name: Decode ambient music into res/raw
+        script: |
+          mkdir -p android-native/app/src/main/res/raw
+          base64 -d < scripts/omi-music.b64.txt > android-native/app/src/main/res/raw/ambient.mp3
+      - name: Build native release APK (unsigned)
+        script: |
+          set -e
+          if ! gradle -v 2>/dev/null | grep -q "Gradle 8.14"; then
+            curl -sL https://services.gradle.org/distributions/gradle-8.14.3-bin.zip -o /tmp/gradle.zip
+            unzip -q /tmp/gradle.zip -d /tmp
+            export PATH=/tmp/gradle-8.14.3/bin:$PATH
+          fi
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > android-native/local.properties
+          cd android-native
+          gradle assembleRelease --console=plain
+    artifacts:
+      - android-native/app/build/outputs/apk/release/app-release-unsigned.apk

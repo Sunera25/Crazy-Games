@@ -7,7 +7,7 @@ set -e
 cd "$(dirname "$0")/.."
 LOGO="${TMPDIR:-/tmp}/omi-logo.png"
 base64 -d < scripts/omi-logo.b64.txt > "$LOGO"
-RES=android/app/src/main/res
+RES="${RES_DIR:-android/app/src/main/res}"
 
 for spec in "mdpi 48" "hdpi 72" "xhdpi 96" "xxhdpi 144" "xxxhdpi 192"; do
   set -- $spec
