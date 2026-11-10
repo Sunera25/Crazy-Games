@@ -122,7 +122,7 @@ export function tableSVG(): string {
     <rect x="40" y="40" width="920" height="540" rx="270" fill="url(#felt)"/>
     <rect x="40" y="40" width="920" height="540" rx="270" fill="none" stroke="#000" stroke-opacity=".28" stroke-width="22"/>
     <rect x="40" y="40" width="920" height="540" fill="url(#spot)"/>
-    <rect x="40" y="40" width="920" height="540" rx="270" filter="url(#feltNoise)"/>
+    <rect class="felt-grain" x="40" y="40" width="920" height="540" rx="270" filter="url(#feltNoise)"/>
     <rect x="64" y="64" width="872" height="492" rx="246" fill="none" stroke="#d4af37" stroke-width="1.4" stroke-dasharray="1 8" stroke-linecap="round" opacity=".6"/>
     <ellipse cx="500" cy="300" rx="180" ry="116" fill="none" stroke="url(#brass)" stroke-width="1.5" opacity=".35"/>
     <ellipse cx="500" cy="300" rx="128" ry="80" fill="#000" fill-opacity=".15" stroke="#d4af37" stroke-width="1" opacity=".5"/>

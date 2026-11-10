@@ -694,6 +694,7 @@ function scheduleBotTrump(): void {
   }, 750)
 }
 
+if (import.meta.env.MODE === 'app') document.body.classList.add('platform-app')
 loadingStart()
 showSplash()
 loadingStop()
